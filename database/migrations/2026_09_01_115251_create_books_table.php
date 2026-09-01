@@ -11,14 +11,16 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('tasks', function (Blueprint $table) {
+        Schema::create('books', function (Blueprint $table) {
             $table->id();
-            $table->string('title');
+            $table->string('title', 255);
+            $table->string('author', 255);
+            $table->string('isbn', 13)->unique();
+            $table->date('published_date');
             $table->text('description')->nullable();
-            $table->enum('status', ['pending', 'in_progress', 'completed'])->default('pending');
-            $table->date('due_date')->nullable();
-            // 認証は実装しませんが、データ構造として所有者は持たせます
-            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            $table->string('image_url', 255)->nullable();
+            $table->foreignId('user_id')->constrained()->restrictOnDelete();
+            $table->softDeletes();
             $table->timestamps();
         });
     }
@@ -28,6 +30,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('tasks');
+        Schema::dropIfExists('books');
     }
 };
