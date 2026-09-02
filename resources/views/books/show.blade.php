@@ -12,6 +12,11 @@
                     {{ session('success') }}
                 </div>
             @endif
+            @if ($book->trashed())
+                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+                    この本は削除されました
+                </div>
+            @endif
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                 <div class="p-6 text-gray-900">
                     <div class="flex flex-col md:flex-row gap-6">
@@ -29,6 +34,7 @@
                                 <h1 class="text-2xl font-bold">{{ $book->title }}</h1>
 
                                 <!-- お気に入りボタン -->
+                                @if(! $book->trashed())
                                 @auth
                                     @if(Auth::user()->favoriteBooks->contains($book->id))
                                         <form action="{{ route('favorites.toggle', $book) }}" method="POST" novalidate>
@@ -56,6 +62,7 @@
                                         </svg>
                                     </a>
                                 @endauth
+                                @endif
                             </div>
 
                             <p class="text-gray-600 mb-2"><strong>著者:</strong> {{ $book->author }}</p>
@@ -89,6 +96,15 @@
                                         </button>
                                     </form>
                                 @endcan
+                                @can('restore', $book)
+                                    <form action="{{ route('books.restore', $book) }}" method="POST" novalidate>
+                                        @csrf
+                                        @method('PATCH')
+                                        <button type="submit" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
+                                            復元する
+                                        </button>
+                                    </form>
+                                @endcan
                             </div>
                         </div>
                     </div>
@@ -97,6 +113,7 @@
                     <div class="mt-8 pt-8 border-t border-gray-200">
                         <h2 class="text-xl font-bold mb-4">レビュー</h2>
 
+                        @if(! $book->trashed())
                         @auth
                             <!-- レビュー投稿フォーム -->
                             <div class="mb-6 bg-gray-50 p-4 rounded-lg">
@@ -138,6 +155,9 @@
                                 レビューを投稿するには<a href="{{ route('login') }}" class="text-blue-600 hover:underline">ログイン</a>してください。
                             </p>
                         @endauth
+                        @else
+                            <p class="mb-6 text-gray-600">削除済みの書籍にはレビューを投稿できません</p>
+                        @endif
 
                         <!-- レビュー一覧 -->
                         @if($book->reviews->count() > 0)
