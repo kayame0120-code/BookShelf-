@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\BookController;
 use App\Http\Controllers\FavoriteController;
+use App\Http\Controllers\GenreController;
+use App\Http\Controllers\RankingController;
 use App\Http\Controllers\ReviewController;
 use Illuminate\Support\Facades\Route;
 
@@ -49,3 +51,11 @@ Route::middleware('auth')->group(function () {
     Route::get('/favorites', [FavoriteController::class, 'index'])->name('favorites.index');
     Route::post('/books/{book}/favorites', [FavoriteController::class, 'toggle'])->name('favorites.toggle');
 });
+
+// ジャンル（認証必須）
+Route::middleware('auth')->group(function () {
+    Route::resource('genres', GenreController::class);
+});
+
+// ランキング（公開）
+Route::get('/ranking', [RankingController::class, 'index'])->name('ranking.index');
