@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\BookController;
+use App\Http\Controllers\FavoriteController;
+use App\Http\Controllers\ReviewController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -34,4 +36,16 @@ Route::middleware('auth')->group(function () {
     Route::delete('/books/{book}', [BookController::class, 'destroy'])->name('books.destroy');
     Route::patch('/books/{book}/restore', [BookController::class, 'restore'])
         ->name('books.restore')->withTrashed();
+});
+
+// レビュー・いいね・お気に入り（認証必須）
+Route::middleware('auth')->group(function () {
+    Route::post('/books/{book}/reviews', [ReviewController::class, 'store'])->name('reviews.store');
+    Route::get('/reviews/{review}/edit', [ReviewController::class, 'edit'])->name('reviews.edit');
+    Route::put('/reviews/{review}', [ReviewController::class, 'update'])->name('reviews.update');
+    Route::delete('/reviews/{review}', [ReviewController::class, 'destroy'])->name('reviews.destroy');
+    Route::post('/reviews/{review}/like', [ReviewController::class, 'like'])->name('reviews.like');
+
+    Route::get('/favorites', [FavoriteController::class, 'index'])->name('favorites.index');
+    Route::post('/books/{book}/favorites', [FavoriteController::class, 'toggle'])->name('favorites.toggle');
 });
