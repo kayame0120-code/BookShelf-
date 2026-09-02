@@ -8,6 +8,7 @@ CCが実装中に、発注書・機能仕様書・`CLAUDE.md` のどれにも定
 | 発生日 | 対象発注書 | 止まった箇所 | CCの解釈候補 |
 |---|---|---|---|
 | （例）8/26 | 02_書籍CRUD | 書籍削除時の確認ダイアログ文言 | (a) 「本当に削除しますか？」 (b) Bladeの文言をそのまま踏襲 |
+| 2026-09-02 | 05_公開APIシーディング | `App\Models\Book` に `published_date` の `date` cast が無い（走行①の実装は `$casts` 未定義）。発注書02§9の参考モデルおよび発注書05§5は `$this->published_date->format('Y-m-d')` を前提としており cast 有りを想定しているが、実モデルに cast を追加すると `books/show.blade.php` の `{{ $book->published_date }}` の出力が「2012-06-23」→「2012-06-23 00:00:00」に変わり frozen Blade の契約（CLAUDE.md§0でBladeが最優先）に反する。 | (a) §0に従いBlade契約を優先し、モデルには cast を追加せず API Resource 側で `Carbon::parse($this->published_date)->format('Y-m-d')` に変更して両立させる（今回採用。既存Blade表示を壊さない最小修正）。 (b) 走行①のスコープ漏れとしてモデルに `'published_date' => 'date:Y-m-d'` cast を追加し、発注書の literal コードを維持する（ただしBlade表示への影響検証が必要）。 |
 
 - **発生日**: 該当箇所に当たった日付
 - **対象発注書**: `02_発注書/NN_機能名.md` のファイル名
