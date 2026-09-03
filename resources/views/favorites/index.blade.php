@@ -12,7 +12,10 @@
                     @if($books->count() > 0)
                         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             @foreach($books as $book)
-                                <div class="border rounded-lg p-4 hover:shadow-lg transition-shadow cursor-pointer">
+                                <div class="relative border rounded-lg p-4 hover:shadow-lg transition-shadow cursor-pointer">
+                                    {{-- カード全体を詳細ページへのリンクにする（ストレッチリンク）。お気に入りボタンは前面に重ねてクリック可能にする --}}
+                                    <a href="{{ route('books.show', $book) }}" class="absolute inset-0 z-0" aria-label="{{ $book->title }} の詳細"></a>
+
                                     @if($book->image_url)
                                         <img src="{{ $book->image_url }}" alt="{{ $book->title }}" class="w-full h-48 object-cover rounded mb-4">
                                     @else
@@ -21,14 +24,12 @@
                                         </div>
                                     @endif
                                     <h3 class="font-bold text-lg mb-2">
-                                        <a href="{{ route('books.show', $book) }}" class="text-blue-600 hover:underline">
-                                            {{ $book->title }}
-                                        </a>
+                                        <span class="text-blue-600">{{ $book->title }}</span>
                                     </h3>
                                     <p class="text-gray-600 mb-2">{{ $book->author }}</p>
                                     <div class="flex items-center justify-between">
                                         <span class="text-sm text-gray-500">ISBN: {{ $book->isbn }}</span>
-                                        <form action="{{ route('favorites.toggle', $book) }}" method="POST" novalidate>
+                                        <form action="{{ route('favorites.toggle', $book) }}" method="POST" novalidate class="relative z-10">
                                             @csrf
                                             <button type="submit" class="text-red-500 hover:text-red-700">
                                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
