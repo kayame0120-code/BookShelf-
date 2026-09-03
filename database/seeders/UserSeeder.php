@@ -2,9 +2,9 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
-use Illuminate\Database\Seeder;
 use App\Models\User;
+use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 class UserSeeder extends Seeder
 {
@@ -13,11 +13,19 @@ class UserSeeder extends Seeder
      */
     public function run(): void
     {
-        // 固定のテストユーザーを作成（ID: 1）
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-            // パスワードはデフォルトで 'password'
-        ]);
+        $users = [
+            ['name' => '山田太郎', 'email' => 'yamada@example.com'],
+            ['name' => '鈴木花子', 'email' => 'suzuki@example.com'],
+            ['name' => '田中一郎', 'email' => 'tanaka@example.com'],
+            ['name' => '佐藤美咲', 'email' => 'sato@example.com'],
+            ['name' => '高橋健太', 'email' => 'takahashi@example.com'],
+        ];
+
+        foreach ($users as $user) {
+            User::firstOrCreate(
+                ['email' => $user['email']],
+                ['name' => $user['name'], 'password' => Hash::make('password')]
+            );
+        }
     }
 }
