@@ -37,4 +37,12 @@ class ReviewLikeTest extends TestCase
         $this->actingAs($user)->post(route('reviews.like', $review));
         $this->assertSame(1, DB::table('review_likes')->where('review_id', $review->id)->count());
     }
+
+    /** C-4: 未ログインでいいねを押すと/loginへリダイレクト */
+    public function test_guest_cannot_like_review(): void
+    {
+        $review = Review::factory()->create();
+
+        $this->post(route('reviews.like', $review))->assertRedirect('/login');
+    }
 }

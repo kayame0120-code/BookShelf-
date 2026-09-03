@@ -214,4 +214,36 @@ class BookCrudTest extends TestCase
 
         $this->assertDatabaseHas('reviews', ['id' => $review->id, 'book_id' => $book->id]);
     }
+
+    /** D-3: 自分自身のISBNを維持したまま更新してもuniqueエラーにならない */
+    public function test_update_ignores_own_isbn(): void
+    {
+        $owner = User::factory()->create();
+        $genre = Genre::factory()->create();
+        $book = Book::factory()->create(['user_id' => $owner->id, 'isbn' => '9784000000055']);
+        $book->genres()->sync([$genre->id]);
+
+        $response = $this->actingAs($owner)->put(
+            route('books.update', $book),
+            $this->validPayload([$genre->id], ['isbn' => '9784000000055', 'title' => '更新後タイトル'])
+        );
+
+        $response->assertRedirect(route('books.show', $book));
+        $response->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('books', [
+            'id' => $book->id,
+            'title' => '更新後タイトル',
+            'isbn' => '9784000000055',
+        ]);
+    }
+
+    /** G-4: 未削除の書籍に対する復元は本人でも不可 */
+    public function test_restore_undeleted_book_forbidden(): void
+    {
+        $owner = User::factory()->create();
+        $book = Book::factory()->create(['user_id' => $owner->id]);
+
+        $this->actingAs($owner)->patch(route('books.restore', $book))->assertForbidden();
+        $this->assertNull($book->fresh()->deleted_at);
+    }
 }

@@ -122,4 +122,34 @@ class GenreTest extends TestCase
         // アプリ側チェックを迂回した直接削除
         $genre->delete();
     }
+
+    /** B-2: 削除済み書籍のみ紐づくジャンルは一覧で0冊表示 */
+    public function test_index_shows_zero_count_for_genre_with_only_trashed_books(): void
+    {
+        $user = User::factory()->create();
+        $genre = Genre::factory()->create(['name' => '削除済みのみジャンル']);
+        $book = Book::factory()->create();
+        $book->genres()->sync([$genre->id]);
+        $book->delete();
+
+        $this->actingAs($user)->get(route('genres.index'))
+            ->assertOk()
+            ->assertSee('削除済みのみジャンル')
+            ->assertSee('0冊');
+    }
+
+    /** B-3: 詳細の所属書籍は10件ページネーション */
+    public function test_show_paginates_books_at_10(): void
+    {
+        $user = User::factory()->create();
+        $genre = Genre::factory()->create();
+        $books = Book::factory()->count(11)->create();
+        foreach ($books as $book) {
+            $book->genres()->sync([$genre->id]);
+        }
+
+        $response = $this->actingAs($user)->get(route('genres.show', $genre));
+        $response->assertOk();
+        $this->assertTrue($response->viewData('books')->hasMorePages());
+    }
 }

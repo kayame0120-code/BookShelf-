@@ -64,4 +64,37 @@ class FavoriteTest extends TestCase
             ->assertSee('マイお気に入り本')
             ->assertDontSee('他人のお気に入り本');
     }
+
+    /** D-6: 一覧は登録した書籍の作成日時が新しい順 */
+    public function test_index_ordered_by_created_at_desc(): void
+    {
+        $user = User::factory()->create();
+        $older = Book::factory()->create(['title' => '古いお気に入り本', 'created_at' => now()->subDay()]);
+        $newer = Book::factory()->create(['title' => '新しいお気に入り本', 'created_at' => now()]);
+
+        $user->favoriteBooks()->attach([$older->id, $newer->id]);
+
+        $this->actingAs($user)->get('/favorites')
+            ->assertOk()
+            ->assertSeeInOrder([$newer->title, $older->title]);
+    }
+
+    /** E-1 / E-3: 削除済み書籍は一覧から除外され、復元で再表示される */
+    public function test_deleted_book_excluded_and_restored_book_reappears(): void
+    {
+        $user = User::factory()->create();
+        $book = Book::factory()->create(['title' => 'お気に入り削除復元本']);
+        $user->favoriteBooks()->attach($book->id);
+
+        // 登録直後は表示される
+        $this->actingAs($user)->get('/favorites')->assertSee($book->title);
+
+        // E-1: 削除すると一覧から除外される
+        $book->delete();
+        $this->actingAs($user)->get('/favorites')->assertDontSee($book->title);
+
+        // E-3: 復元すると一覧に再表示される
+        $book->restore();
+        $this->actingAs($user)->get('/favorites')->assertSee($book->title);
+    }
 }

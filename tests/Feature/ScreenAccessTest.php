@@ -59,4 +59,15 @@ class ScreenAccessTest extends TestCase
 
         $response->assertRedirect('/books/create');
     }
+
+    /** B-2: 未ログインで書籍の書き込み系操作は/loginへリダイレクト */
+    public function test_guest_cannot_perform_book_write_actions(): void
+    {
+        $book = Book::factory()->create();
+
+        $this->post(route('books.store'), [])->assertRedirect('/login');
+        $this->put(route('books.update', $book), [])->assertRedirect('/login');
+        $this->delete(route('books.destroy', $book))->assertRedirect('/login');
+        $this->patch(route('books.restore', $book))->assertRedirect('/login');
+    }
 }
