@@ -1,4 +1,4 @@
-status: draft
+status: confirmed complete（デザインUI優先例外の影響なし）
 
 # 発注書 05 — 公開API・シーディング
 
@@ -387,3 +387,10 @@ review_likes テーブルにいいねデータを投入する。各レビュー�
 - `sail artisan db:seed` の出力（エラーなく完了すること）
 - `sail bin pint --test` の出力
 - `QUESTIONS.md` に追記した行の有無
+
+---
+
+## 変更履歴（今回のまとめ出力時に確認したこと）
+
+- APIレスポンスの`average_rating`（§3・§5）はAPI専用の集計処理（`Api\V1\BookController`独自の`withAvg`）に基づくものであり、Web画面の書籍一覧（PG01）から★評価表示を撤去した`決定記録_デザインUI優先例外.md`項目1の対象外。API側の`average_rating`は変更なく提供され続ける。
+- §8-3のBookSeeder`description`は元々具体的な文言を指定しておらず自由記述欄であるため、実機検品での書籍説明文の書き直し（同記録項目7）はこの発注書の記述と抵触しない。よって本発注書は変更不要と確認した。
