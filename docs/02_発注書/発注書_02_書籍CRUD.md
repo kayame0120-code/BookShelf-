@@ -1,4 +1,4 @@
-status: draft
+status: patched（デザインUI優先例外により★評価表示関連を修正）
 
 # 発注書 02 — 書籍CRUD
 
@@ -90,7 +90,7 @@ Route::middleware('auth')->group(function () {
 
 | アクション | 処理 |
 |---|---|
-| `index` | `Book::with('genres')->withAvg('reviews', 'rating')->latest()->paginate(10)` を `$books` として `books.index` へ |
+| `index` | `Book::with('genres')->latest()->paginate(10)` を `$books` として `books.index` へ |
 | `create` | `Genre::orderBy('id')->get()` を `$genres` として `books.create` へ |
 | `store` | `StoreBookRequest` で検証 → `DB::transaction()` 内で `Book::create(validated + user_id: Auth::id())` → `$book->genres()->sync($request->genres)` → `redirect()->route('books.show', $book)->with('success', '書籍を登録しました')` |
 | `show` | `$book->load(['genres', 'reviews' => fn ($q) => $q->latest(), 'reviews.user', 'reviews.likedByUsers'])` を `$book` として `books.show` へ |
@@ -99,7 +99,9 @@ Route::middleware('auth')->group(function () {
 | `destroy` | `$this->authorize('delete', $book)` → `$book->delete()`（SoftDeletesにより`deleted_at`がセットされる） → `redirect()->route('books.index')->with('success', '書籍を削除しました')` |
 | `restore` | `$this->authorize('restore', $book)` → `$book->restore()` → `redirect()->route('books.show', $book)->with('success', '書籍を復元しました')` |
 
-`index` の `with('genres')` と `withAvg` はN+1回避のため必須。
+`index` の `with('genres')` はN+1回避のため必須。
+
+> **【2026-09-03改訂】** `index`は元々`withAvg('reviews', 'rating')`も付与していたが、実機検品でのデザインUI優先の例外（`決定記録_デザインUI優先例外.md`項目1）により、書籍一覧カードの★評価表示自体を廃止したため、対応する集約クエリも撤去した。書籍詳細（`show`）・ランキング（`RankingController`）の平均評価表示・集計には影響しない。
 
 ---
 
@@ -107,10 +109,12 @@ Route::middleware('auth')->group(function () {
 
 | 画面ID | Bladeファイル | 渡す変数 | 必須の属性・リレーション | flashスロット |
 |---|---|---|---|---|
-| PG01 | `books/index.blade.php` | `$books`（Paginator・10件） | `image_url` `title` `author` `genres[].name` `reviews_avg_rating` `->links()` | `session('success')` あり |
+| PG01 | `books/index.blade.php` | `$books`（Paginator・10件） | `image_url` `title` `author` `genres[].name` `->links()` | `session('success')` あり |
 | PG02 | `books/show.blade.php` | `$book` | `image_url` `title` `author` `isbn` `published_date` `description` `genres[].name` `reviews[]`（`user.name` `rating` `comment` `created_at` `likedByUsers`）／`Auth::user()->favoriteBooks`／`Auth::user()->likedReviews` | `session('success')` あり |
 | PG03 | `books/create.blade.php` + `_form.blade.php` | `$genres` | `$genres->isEmpty()` `$genre->id` `$genre->name` | なし（`$errors`と`old()`のみ） |
 | PG04 | `books/edit.blade.php` + `_form.blade.php` | `$book`, `$genres` | 上記＋`$book->genres->pluck('id')` | なし |
+
+> **【2026-09-03改訂】** PG01から`reviews_avg_rating`を削除。デザインUI（要件シート シート6・書籍一覧画像）に★評価表示が存在しないため、`決定記録_デザインUI優先例外.md`項目1に基づき撤去した（frozen宣言のあるBladeモック自体には元々★評価表示があったため、本来は§0の正本優先順位ではモックが勝つ場面だが、デザインUIを優先する例外を適用）。加えて、書籍一覧のページネーションは`resources/views/vendor/pagination/tailwind.blade.php`を`vendor:publish`した上で左下グルーピング配置に変更済み（同例外項目3）。この変更はページネーション機能を提供する全画面（ジャンル詳細等）に共通で反映される。
 
 フォーム項目（`_form.blade.php`実測）: `title` / `author` / `isbn` / `published_date`(date) / `description`(textarea) / `image_url` / `genres[]`(checkbox・複数)。必須マーク`*`は title / author / ISBN-13 / 出版日 / ジャンル。ISBN欄の注記「13桁のISBNコードを入力してください」、placeholder `9784000000000`。
 
@@ -246,7 +250,7 @@ class Book extends Model
 
 ## 11. 禁止事項
 
-1. `resources/` 配下のBlade / CSS / JSを、本書§8-1に明記した4点以外は1文字も変更しない。
+1. `resources/` 配下のBlade / CSS / JSを、本書§8-1に明記した4点以外は1文字も変更しない。**（2026-09-03注記: この禁止は走行②着手時点のもの。実機検品後にデザインUI優先の例外で`books/index.blade.php`・ページネーションコンポーネント等に別途変更が加わっている。詳細は`決定記録_デザインUI優先例外.md`参照。以後この発注書を参照する際は、本注記と§2・§3の改訂箇所を優先すること）**
 2. 本発注書に明記されていないバリデーションロジック・認可ロジックを独自に追加しない（発注書の指定と異なる実装をする場合は、仮決めせず`QUESTIONS.md`に記録して停止する）。
 3. `migrate:fresh` を要するmigration変更をしない（テーブル定義は走行①で確定済み）。
 4. 「やらないこと」表に挙げた成果物を先取りして作らない。
@@ -271,3 +275,11 @@ class Book extends Model
 - `sail artisan route:list --path=books` の出力
 - `sail bin pint --test` の出力
 - `QUESTIONS.md` に追記した行の有無
+
+---
+
+## 変更履歴（今回のまとめ出力時に確認したこと）
+
+- **§2 index行・§3 PG01行**: `withAvg('reviews','rating')`／`reviews_avg_rating`を削除。デザインUI優先の例外（`決定記録_デザインUI優先例外.md`項目1・3）を反映。
+- **§11-1**: 上記変更が§8-1の「4点以外は変更しない」という当時の禁止事項と表面上矛盾するため、時点の異なる決定であることを明記する注記を追加。
+- B-2（未認証時302リダイレクト）に関するcurl/CSRFの検証方法の変更は、`検品表02_B2・検品表03_C4_修正パッチ.md`側の変更であり、本発注書のルーティング仕様（§1）自体に変更はない。
