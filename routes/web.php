@@ -25,6 +25,7 @@ Route::get('/books', [BookController::class, 'index'])->name('books.index');
 // 書籍（認証必須。/books/{book} より前に定義）
 Route::middleware('auth')->group(function () {
     Route::get('/books/create', [BookController::class, 'create'])->name('books.create');
+    Route::get('/books/isbn/{isbn}', [BookController::class, 'searchByIsbn'])->name('books.searchByIsbn');
     Route::post('/books', [BookController::class, 'store'])->name('books.store');
 });
 

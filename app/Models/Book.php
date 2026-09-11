@@ -20,6 +20,15 @@ class Book extends Model
         'user_id',
     ];
 
+    /**
+     * The attributes that should be cast.
+     *
+     * @var array<string, string>
+     */
+    protected $casts = [
+        'published_date' => 'date',
+    ];
+
     public function user()
     {
         return $this->belongsTo(User::class);

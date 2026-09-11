@@ -7,9 +7,12 @@ use App\Http\Requests\UpdateBookRequest;
 use App\Models\Book;
 use App\Models\Genre;
 use Illuminate\Contracts\View\View;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 
 class BookController extends Controller
 {
@@ -48,6 +51,43 @@ class BookController extends Controller
         return view('books.index', [
             'books' => $books,
             'genres' => Genre::all(),
+        ]);
+    }
+
+    /**
+     * ISBNからGoogle Books APIを検索し、フォーム自動入力用のJSONを返す。
+     */
+    public function searchByIsbn(string $isbn): JsonResponse
+    {
+        if (! preg_match('/^[0-9]{13}$/', $isbn)) {
+            return response()->json(['error' => 'ISBNは13桁の数字で入力してください'], 422);
+        }
+
+        try {
+            $response = Http::timeout(5)->get('https://www.googleapis.com/books/v1/volumes', [
+                'q' => "isbn:{$isbn}",
+            ]);
+        } catch (ConnectionException $e) {
+            return response()->json(['error' => '書籍情報の取得に失敗しました'], 502);
+        }
+
+        if ($response->failed()) {
+            return response()->json(['error' => '書籍情報の取得に失敗しました'], 502);
+        }
+
+        $totalItems = $response->json('totalItems', 0);
+        if ($totalItems === 0) {
+            return response()->json(['error' => '該当する書籍が見つかりませんでした'], 404);
+        }
+
+        $volumeInfo = $response->json('items.0.volumeInfo', []);
+
+        return response()->json([
+            'title' => $volumeInfo['title'] ?? '',
+            'author' => implode('、', $volumeInfo['authors'] ?? []),
+            'description' => $volumeInfo['description'] ?? '',
+            'image_url' => $volumeInfo['imageLinks']['thumbnail'] ?? '',
+            'published_date' => $volumeInfo['publishedDate'] ?? '',
         ]);
     }
 
