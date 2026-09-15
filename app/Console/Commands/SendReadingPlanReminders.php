@@ -33,19 +33,24 @@ class SendReadingPlanReminders extends Command
     {
         $today = Carbon::today();
 
-        $this->notify($today->copy()->addDays(3), NotificationTiming::ThreeDaysBefore);
-        $this->notify($today->copy(), NotificationTiming::OnDueDate);
-        $this->notify($today->copy()->subDays(3), NotificationTiming::ThreeDaysAfter);
+        // timing 別の対象 status（機能仕様書 notifications.md §5・確定）。
+        // three_days_after のみ completed 以外（in_progress ＋ expired）を対象とする。
+        // 0:00 の状態更新バッチで既に expired へ切り替わった計画にも「期限切れ」通知を届けるため。
+        $this->notify($today->copy()->addDays(3), NotificationTiming::ThreeDaysBefore, [ReadingPlanStatus::InProgress]);
+        $this->notify($today->copy(), NotificationTiming::OnDueDate, [ReadingPlanStatus::InProgress]);
+        $this->notify($today->copy()->subDays(3), NotificationTiming::ThreeDaysAfter, [ReadingPlanStatus::InProgress, ReadingPlanStatus::Expired]);
 
         return self::SUCCESS;
     }
 
     /**
-     * 指定日を期日とする進行中の計画の所有者へ通知を送る。
+     * 指定日を期日とする対象statusの計画の所有者へ通知を送る。
+     *
+     * @param  array<int, ReadingPlanStatus>  $statuses
      */
-    private function notify(Carbon $targetDate, NotificationTiming $timing): void
+    private function notify(Carbon $targetDate, NotificationTiming $timing, array $statuses): void
     {
-        ReadingPlan::where('status', ReadingPlanStatus::InProgress)
+        ReadingPlan::whereIn('status', $statuses)
             ->whereDate('target_date', $targetDate)
             ->with('user')
             ->get()
