@@ -17,37 +17,28 @@ class ReviewSeeder extends Seeder
         $users = User::orderBy('id')->get();
         $books = Book::orderBy('id')->get();
 
-        // 各書籍に配分するレビュー件数（2〜4件、合計32件）
-        $counts = [3, 3, 3, 3, 3, 3, 2, 3, 3, 3, 3];
-
-        $comments = [
-            '期待以上の内容で、読んで良かったです。',
-            '分かりやすくまとまっていて参考になりました。',
-            '何度も読み返したくなる一冊です。',
-            '新しい視点を得ることができました。',
-            'テーマの掘り下げが丁寧で好印象でした。',
-            '実生活にすぐ役立つ内容でした。',
-            '読み応えがあり、満足しています。',
-            '冒頭から引き込まれました。',
-            '構成が良く、最後まで飽きずに読めました。',
-            '万人におすすめできる良書だと思います。',
+        // 評価別の日本語コメントテンプレート（5段階）
+        $commentTemplates = [
+            5 => ['素晴らしい本でした！', '人生が変わりました。', '何度も読み返しています。'],
+            4 => ['とても参考になりました。', '読みやすくておすすめです。', '期待通りの内容でした。'],
+            3 => ['普通でした。', '可もなく不可もなく。', '期待したほどではなかった。'],
+            2 => ['少し期待外れでした。', '内容が薄い印象。', 'もう少し深掘りしてほしかった。'],
+            1 => ['残念ながら合いませんでした。', '期待と違いました。'],
         ];
 
-        $commentIndex = 0;
+        foreach ($books as $book) {
+            $reviewCount = rand(2, 4);
 
-        foreach ($books as $bookIndex => $book) {
-            for ($j = 0; $j < $counts[$bookIndex]; $j++) {
-                $user = $users[($bookIndex + $j) % $users->count()];
-                $rating = 3 + (($bookIndex + $j) % 3);
+            foreach ($users->random($reviewCount) as $user) {
+                $rating = rand(1, 5);
+                $comments = $commentTemplates[$rating];
 
                 Review::create([
                     'user_id' => $user->id,
                     'book_id' => $book->id,
                     'rating' => $rating,
-                    'comment' => $comments[$commentIndex % count($comments)],
+                    'comment' => $comments[array_rand($comments)],
                 ]);
-
-                $commentIndex++;
             }
         }
     }
