@@ -5,13 +5,15 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreGenreRequest;
 use App\Http\Requests\UpdateGenreRequest;
 use App\Models\Genre;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\View\View;
 
 class GenreController extends Controller
 {
     /**
      * ジャンル一覧を表示する。
      */
-    public function index()
+    public function index(): View
     {
         $genres = Genre::withCount('books')->orderBy('id')->get();
 
@@ -21,7 +23,7 @@ class GenreController extends Controller
     /**
      * ジャンル登録フォームを表示する。
      */
-    public function create()
+    public function create(): View
     {
         return view('genres.create');
     }
@@ -29,7 +31,7 @@ class GenreController extends Controller
     /**
      * ジャンルを登録する。
      */
-    public function store(StoreGenreRequest $request)
+    public function store(StoreGenreRequest $request): RedirectResponse
     {
         Genre::create($request->validated());
 
@@ -39,7 +41,7 @@ class GenreController extends Controller
     /**
      * ジャンル詳細（所属書籍一覧）を表示する。
      */
-    public function show(Genre $genre)
+    public function show(Genre $genre): View
     {
         $books = $genre->books()->with('genres')->latest('books.created_at')->paginate(10);
 
@@ -49,7 +51,7 @@ class GenreController extends Controller
     /**
      * ジャンル編集フォームを表示する。
      */
-    public function edit(Genre $genre)
+    public function edit(Genre $genre): View
     {
         return view('genres.edit', compact('genre'));
     }
@@ -57,7 +59,7 @@ class GenreController extends Controller
     /**
      * ジャンルを更新する。
      */
-    public function update(UpdateGenreRequest $request, Genre $genre)
+    public function update(UpdateGenreRequest $request, Genre $genre): RedirectResponse
     {
         $genre->update($request->validated());
 
@@ -67,7 +69,7 @@ class GenreController extends Controller
     /**
      * ジャンルを削除する（紐づく書籍があれば削除不可）。
      */
-    public function destroy(Genre $genre)
+    public function destroy(Genre $genre): RedirectResponse
     {
         if ($genre->books()->withTrashed()->exists()) {
             return redirect()->route('genres.index')

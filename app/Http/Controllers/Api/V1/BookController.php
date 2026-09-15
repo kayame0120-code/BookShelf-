@@ -9,6 +9,8 @@ use App\Http\Requests\Api\V1\UpdateApiBookRequest;
 use App\Http\Resources\BookListResource;
 use App\Http\Resources\BookResource;
 use App\Models\Book;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -18,7 +20,7 @@ class BookController extends Controller
     /**
      * 書籍一覧を返す。
      */
-    public function index(IndexBookRequest $request)
+    public function index(IndexBookRequest $request): AnonymousResourceCollection
     {
         $perPage = $request->input('per_page', 10);
 
@@ -44,7 +46,7 @@ class BookController extends Controller
     /**
      * 書籍詳細を返す。
      */
-    public function show(Book $book)
+    public function show(Book $book): BookResource
     {
         $book->load(['genres', 'reviews.user'])
             ->loadAvg('reviews', 'rating')
@@ -56,7 +58,7 @@ class BookController extends Controller
     /**
      * 書籍を登録する。
      */
-    public function store(StoreApiBookRequest $request)
+    public function store(StoreApiBookRequest $request): JsonResponse
     {
         $book = DB::transaction(function () use ($request) {
             $book = Book::create($request->validated() + ['user_id' => Auth::id()]);
@@ -73,7 +75,7 @@ class BookController extends Controller
     /**
      * 書籍を更新する。
      */
-    public function update(UpdateApiBookRequest $request, Book $book)
+    public function update(UpdateApiBookRequest $request, Book $book): BookResource
     {
         $this->authorize('update', $book);
 
@@ -90,7 +92,7 @@ class BookController extends Controller
     /**
      * 書籍を論理削除する。
      */
-    public function destroy(Book $book)
+    public function destroy(Book $book): Response
     {
         $this->authorize('delete', $book);
 

@@ -9,6 +9,7 @@ use App\Models\Genre;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -94,7 +95,7 @@ class BookController extends Controller
     /**
      * 書籍登録フォームを表示する。
      */
-    public function create()
+    public function create(): View
     {
         $genres = Genre::orderBy('id')->get();
 
@@ -104,7 +105,7 @@ class BookController extends Controller
     /**
      * 書籍を登録する。
      */
-    public function store(StoreBookRequest $request)
+    public function store(StoreBookRequest $request): RedirectResponse
     {
         $book = DB::transaction(function () use ($request) {
             $book = Book::create($request->validated() + ['user_id' => Auth::id()]);
@@ -119,7 +120,7 @@ class BookController extends Controller
     /**
      * 書籍詳細を表示する（削除済みも表示）。
      */
-    public function show(Book $book)
+    public function show(Book $book): View
     {
         $book->load([
             'genres',
@@ -134,7 +135,7 @@ class BookController extends Controller
     /**
      * 書籍編集フォームを表示する。
      */
-    public function edit(Book $book)
+    public function edit(Book $book): View
     {
         $this->authorize('update', $book);
 
@@ -146,7 +147,7 @@ class BookController extends Controller
     /**
      * 書籍を更新する。
      */
-    public function update(UpdateBookRequest $request, Book $book)
+    public function update(UpdateBookRequest $request, Book $book): RedirectResponse
     {
         $this->authorize('update', $book);
 
@@ -161,7 +162,7 @@ class BookController extends Controller
     /**
      * 書籍を論理削除する。
      */
-    public function destroy(Book $book)
+    public function destroy(Book $book): RedirectResponse
     {
         $this->authorize('delete', $book);
 
@@ -173,7 +174,7 @@ class BookController extends Controller
     /**
      * 書籍を復元する。
      */
-    public function restore(Book $book)
+    public function restore(Book $book): RedirectResponse
     {
         $this->authorize('restore', $book);
 
