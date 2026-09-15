@@ -27,7 +27,6 @@ class UpdateApiBookRequest extends ApiFormRequest
             'image_url' => ['nullable', 'url', 'max:255'],
             'genres' => ['required', 'array', 'min:1'],
             'genres.*' => ['exists:genres,id'],
-            'user_id' => ['required', 'integer', 'exists:users,id'],
         ];
     }
 
@@ -54,9 +53,6 @@ class UpdateApiBookRequest extends ApiFormRequest
             'genres.required' => 'ジャンルを1つ以上選択してください',
             'genres.min' => 'ジャンルを1つ以上選択してください',
             'genres.*.exists' => '選択されたジャンルが存在しません',
-            'user_id.required' => '登録者IDを指定してください',
-            'user_id.integer' => '登録者IDを指定してください',
-            'user_id.exists' => '指定された登録者が存在しません',
         ];
     }
 }

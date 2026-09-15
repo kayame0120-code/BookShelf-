@@ -1,22 +1,21 @@
-# 機能仕様書 — public_api（公開API AP01〜AP05）
+# 機能仕様書 — public_api（公開API AP01〜AP05 ＋ ★AP06 Sanctum認証）
 
 | 項目 | 内容 |
 |---|---|
-| 対象発注書 | 05_公開APIシーディング |
-| 正本 | 要件シート.xlsx シート3/7/8/9/10/13 ＋ Bladeモック `basic`（frozen） |
-| 適用範囲 | 基本要件のみ（**認証なし**）。★応用の Sanctum 後付け（AP06）は第6週に本書へ追記する |
-| 完成条件 | 本書だけで発注書05が書ける（他ファイル参照不要） |
-| 版 | v1（2026-09-01・面談②のSoftDelete確定を反映済み） |
+| 対象発注書 | 05_公開APIシーディング ／ 10_Sanctum |
+| 正本 | 要件シート.xlsx シート3/7/8/9/10/12/13 ＋ Bladeモック `basic` / `advanced`（frozen） |
+| 適用範囲 | 基本要件（認証なしCRUD）と ★応用要件（Sanctumトークン認証の後付け） |
+| 完成条件 | 本書だけで発注書05・10が書ける（他ファイル参照不要） |
 
 ---
 
 ## 0. スコープ
 
-**含む**: 公開API 5本（AP01〜AP05）のルート・コントローラー・API Resource・バリデーション・レスポンス構造・ステータスコード、API専用のエラーハンドリング、DatabaseSeeder の実行順、公開APIのテスト観点。
+**含む**: 公開API 5本（AP01〜AP05）のルート・コントローラー・API Resource・バリデーション・レスポンス構造・ステータスコード、API専用のエラーハンドリング、DatabaseSeeder の実行順、★Sanctumトークン認証（AP06）の認証方式・トークン入手経路・認可・401/403レスポンス、以上すべてのテスト観点。
 
 **含まない**: Web画面側の実装（books.md ほか）／各Seederの中身（本書 §8 に所在を明記）。
 
-**認可（Policy）は基本段階では存在しない**。5本すべて認証なしで動作するため、`$this->authorize()` は1箇所も呼ばない。認可が入るのは応用の Sanctum 後付け以降。
+**認可（Policy）は基本段階では存在しない**。5本すべて認証なしで動作するため、`$this->authorize()` は1箇所も呼ばない。認可が入るのは★応用の Sanctum 後付け以降（§10）。
 
 **アーキテクチャ（シート3）**: 本プロジェクトは Traditional Web（Blade + セッション認証）に加えて外部アプリ向けの公開API（JSON）を持つ。API は `routes/api.php` と `App\Http\Controllers\Api\V1` 名前空間を使う。基本段階は**認証なしのCRUD**として実装し、応用段階で Sanctum によるトークン認証を後付けする。
 
@@ -32,6 +31,8 @@
 | AP04 | PUT | `/api/v1/books/{book}` | `Api\V1\BookController@update` | 不要 | ★ Sanctum + BookPolicy（所有者のみ） |
 | AP05 | DELETE | `/api/v1/books/{book}` | `Api\V1\BookController@destroy` | 不要 | ★ Sanctum + BookPolicy（所有者のみ） |
 
+**基本段階の定義**
+
 ```php
 // routes/api.php（'api' プレフィックスは RouteServiceProvider が自動付与）
 Route::prefix('v1')->group(function () {
@@ -39,7 +40,26 @@ Route::prefix('v1')->group(function () {
 });
 ```
 
-`withTrashed()` は**どのルートにも付けない**。論理削除済みの書籍IDを指定した AP02 / AP04 / AP05 は 404 を返すのが確定仕様。
+**★応用段階の定義（書き込み系のみ `auth:sanctum` を適用）**
+
+```php
+Route::prefix('v1')->group(function () {
+    // 読み取り系（認証不要のまま維持）
+    Route::get('books', [BookController::class, 'index']);
+    Route::get('books/{book}', [BookController::class, 'show']);
+
+    // 書き込み系（トークン認証必須）
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::post('books', [BookController::class, 'store']);
+        Route::put('books/{book}', [BookController::class, 'update']);
+        Route::delete('books/{book}', [BookController::class, 'destroy']);
+    });
+});
+```
+
+- 応用段階では `apiResource()` をやめ、5本を個別定義に展開する。`apiResource()` のままでは読み取り系と書き込み系にミドルウェアを出し分けられないため。
+- URI・メソッド・アクション名は基本段階から一切変えない。変わるのはミドルウェアの適用範囲だけ。
+- `withTrashed()` は**どのルートにも付けない**。論理削除済みの書籍IDを指定した AP02 / AP04 / AP05 は 404 を返すのが確定仕様。
 
 ---
 
@@ -53,6 +73,7 @@ Route::prefix('v1')->group(function () {
 | 日時形式（datetime型） | ISO8601・JSTオフセット付き（例: `2026-08-01T10:00:00+09:00`）。`toIso8601String()` を使う |
 | バリデーションエラー形式 | `{"message": string, "errors": {field: [string, ...]}}` |
 | 存在しないIDのエラー形式 | `{"message": string}`（`errors` キーなし） |
+| ★ 認証・認可エラー形式 | `{"message": string}`（`errors` キーなし） |
 | ジャンル指定（POST/PUT） | フィールド名は `genres`（配列）。Web版の `genres[]` と同一フィールド名・同一ルール |
 | レスポンス整形 | 必ず API Resource クラスを使う |
 
@@ -60,13 +81,15 @@ JSTオフセットを出すには `config/app.php` の `timezone` を `Asia/Toky
 
 ### ステータスコード早見表
 
-| コード | 意味 | 該当 |
-|---|---|---|
-| 200 | 取得・更新成功 | AP01, AP02, AP04 |
-| 201 | 新規作成成功 | AP03 |
-| 204 | 削除成功（本文なし） | AP05 |
-| 404 | 対象が存在しない、または論理削除済み | AP02, AP04, AP05 |
-| 422 | バリデーションエラー | AP01, AP03, AP04 |
+| コード | 意味 | 該当（基本） | 該当（★応用適用後） |
+|---|---|---|---|
+| 200 | 取得・更新成功 | AP01, AP02, AP04 | AP01, AP02, AP04 |
+| 201 | 新規作成成功 | AP03 | AP03 |
+| 204 | 削除成功（本文なし） | AP05 | AP05 |
+| 401 | 未認証 | — | AP03, AP04, AP05 |
+| 403 | 認証済みだが書籍の所有者でない | — | AP04, AP05 |
+| 404 | 対象が存在しない、または論理削除済み | AP02, AP04, AP05 | AP02, AP04, AP05 |
+| 422 | バリデーションエラー | AP01, AP03, AP04 | AP01, AP03, AP04 |
 
 ---
 
@@ -103,6 +126,7 @@ JSTオフセットを出すには `config/app.php` の `timezone` を `Asia/Toky
 - **`description` は一覧に含めない**（詳細APIのみで返す。一覧ペイロードを軽くするための確定仕様）。
 - `links` / `meta` は Laravel の `AnonymousResourceCollection` が `paginate()` から自動生成する構造をそのまま使う（URLは実行環境の絶対URLになる）。
 - 検索条件をページ送りに引き継ぐため `->withQueryString()` を付ける。
+- ★応用段階で `isbn` / `published_date` が nullable になるため、値が未設定の書籍はそれぞれ `null` を返す。キー自体は必ず含める。
 
 **レスポンス（422・パラメータ不正例）**
 
@@ -166,7 +190,8 @@ JSTオフセットを出すには `config/app.php` の `timezone` を `Asia/Toky
 | `genres.*` | `exists:genres,id` | 選択されたジャンルが存在しません |
 | `user_id` | `required, integer, exists:users,id` | 登録者IDを指定してください／指定された登録者が存在しません |
 
-`user_id` が必須なのは、基本段階は認証なしで `Auth::id()` が使えないため。応用段階で Sanctum を導入したら `Auth::id()` 取得方式に切り替える。
+`user_id` が必須なのは、基本段階は認証なしで `Auth::id()` が使えないため。★応用段階での変更は §10-3 を参照。
+★応用段階では `isbn` と `published_date` が `nullable` に変わる（books.md §4 と同一の変更をAPI側にも適用する）。
 
 **リクエスト例**
 
@@ -186,7 +211,7 @@ JSTオフセットを出すには `config/app.php` の `timezone` を `Asia/Toky
 {"message": "入力内容に誤りがあります。", "errors": {"title": ["タイトルを入力してください"], "isbn": ["このISBNは既に登録されています"]}}
 ```
 
-**ステータスコード**: 201／422。
+**ステータスコード**: 201／422（★応用適用後は 401 が加わる）。
 
 ---
 
@@ -202,7 +227,7 @@ AP03 の全項目を同一ルールで適用する。差分は `isbn` のみ。
 
 **レスポンス**: 200 は AP02 の `data` 形式（`reviews` キーを除く）／404 は `{"message": "指定された書籍が見つかりません。"}`／422 は AP03 と同一形式。
 
-**ステータスコード**: 200／404／422。
+**ステータスコード**: 200／404／422（★応用適用後は 401・403 が加わる）。
 
 ---
 
@@ -210,7 +235,7 @@ AP03 の全項目を同一ルールで適用する。差分は `isbn` のみ。
 
 **レスポンス**: 204（本文なし）／404 は `{"message": "指定された書籍が見つかりません。"}`。
 
-**ステータスコード**: 204／404。
+**ステータスコード**: 204／404（★応用適用後は 401・403 が加わる）。
 
 **関連データの扱い（面談②反映・確定）**: 書籍は物理削除ではなく論理削除される。`$book->delete()` が `deleted_at` をセットする。`reviews` / `favorites` / `book_genre` のレコードは削除されず保持される（`favorites` / `book_genre` 起点の `cascadeOnDelete()` は論理削除下では発火しない）。204/404 というレスポンス形状は cascade 方式でも SoftDelete 方式でも変わらないため、外部から見た挙動に差はない。
 
@@ -229,6 +254,7 @@ AP03 の全項目を同一ルールで適用する。差分は `isbn` のみ。
 - `keyword` は基本段階の要件シート シート7 では★応用扱いだが、シート8・シート13 で AP01 のリクエストパラメータとして基本段階から確定しているため、**API側は基本段階で実装する**（Web画面側の検索フォームは応用）。
 - `store` / `update` は `DB::transaction()` で書籍保存とジャンル sync を1単位にする。
 - `Book` の SoftDeletes により、`index` は論理削除済みを自動除外する。`show` / `update` / `destroy` はルートモデル紐付けが論理削除済みを解決できず 404 になる。追加の分岐は不要。
+- ★応用段階では `store` / `update` / `destroy` に §10-2 の認可処理が加わる。`index` / `show` は変更しない。
 
 ---
 
@@ -244,7 +270,7 @@ AP03 の全項目を同一ルールで適用する。差分は `isbn` のみ。
 実装のポイント。
 
 ```php
-'published_date' => $this->published_date->format('Y-m-d'),
+'published_date' => $this->published_date?->format('Y-m-d'),
 'average_rating' => round((float) $this->reviews_avg_rating, 1),
 'reviews_count'  => $this->reviews_count,
 'genres'         => GenreResource::collection($this->whenLoaded('genres')),
@@ -257,6 +283,8 @@ AP03 の全項目を同一ルールで適用する。差分は `isbn` のみ。
 `reviews` を `whenLoaded()` にすることで、AP03 / AP04 のレスポンスからキーごと消える（要件シートの 201 レスポンス例に `reviews` が無いことと一致する）。
 
 `average_rating` は数値で返す。レビュー0件のときは `reviews_avg_rating` が null になるので `(float)` キャストで `0` になる。JSON の数値表現上、`4.0` は `4` として出力され得るが、値は要件シートの例と一致する。
+
+`published_date` は★応用段階で nullable になるため `?->` で呼ぶ。値が未設定なら `null` を返し、キー自体は落とさない。
 
 ---
 
@@ -289,6 +317,8 @@ abstract class ApiFormRequest extends FormRequest
 }
 ```
 
+★応用段階でも `authorize()` は `true` のまま変えない。認証は `auth:sanctum` ミドルウェア、認可は Policy が担当し、FormRequest には持たせない。
+
 ---
 
 ## 7. 404 レスポンスの日本語化（必須）
@@ -320,6 +350,8 @@ $this->renderable(function (NotFoundHttpException $e, Request $request) {
 5. `FavoriteSeeder` — favorites（favorites.md §9）
 6. `ReviewLikeSeeder` — review_likes（reviews_likes.md §11）
 
+★応用段階では 7 番目に `ReadingPlanSeeder`（reading_plans.md）が加わる。
+
 `sail artisan db:seed` でまとめて投入できるようにする。
 
 ### 各Seederの要点（一覧）
@@ -328,12 +360,14 @@ $this->renderable(function (NotFoundHttpException $e, Request $request) {
 |---|---|---|
 | UserSeeder | 山田太郎 / 鈴木花子 / 田中一郎 / 佐藤美咲 / 高橋健太 の5件。パスワードは全員 `password` | `firstOrCreate`（email重複防止）＋ `Hash::make()` |
 | GenreSeeder | 小説・ビジネス・技術書・自己啓発・エッセイ・歴史・科学・芸術・料理・旅行 の10件 | `firstOrCreate`（name重複防止） |
-| BookSeeder | 11件。登録者は `User::first()`。`image_url` は `https://placehold.co/200x300/e2e8f0/475569?text={番号}` | `firstOrCreate`（ISBN重複防止）＋ `genres()->sync()` |
-| ReviewSeeder | 32件。5人が11冊にレビュー。`rating` は 3〜5。各書籍に2〜4件を配分 | `create` |
+| BookSeeder | 11件。登録者は基本段階が `User::first()`、★応用段階が `$users->random()->id`。`image_url` は `https://placehold.co/200x300/e2e8f0/475569?text={番号}` | `firstOrCreate`（ISBN重複防止）＋ `genres()->sync()` |
+| ReviewSeeder | 32件。5人が11冊にレビュー。`rating` は基本段階が 3〜5、★応用段階が 1〜5。各書籍に2〜4件を配分 | `create` |
 | FavoriteSeeder | 各ユーザーに3〜5冊 | `syncWithoutDetaching` |
 | ReviewLikeSeeder | 各レビューに0〜3人（自分のレビューは除く） | `syncWithoutDetaching` |
 
 シーディング完了後、`genre_id=3` は「技術書」、`id=3` の書籍は「リーダブルコード」になる。AP01 / AP02 のレスポンス例はこの前提で書かれている。
+
+★応用段階で BookSeeder の登録者がランダム割当に変わるため、AP01 / AP02 のレスポンス例における書籍の内容（タイトル・ISBN・出版日・ジャンル）は変わらないが、所有者は実行ごとに変わる。所有者を前提にした AP04 / AP05 のテストは、Seeder に依存せずテスト内で書籍を生成して検証する。
 
 ---
 
@@ -341,15 +375,105 @@ $this->renderable(function (NotFoundHttpException $e, Request $request) {
 
 - 名前空間は `App\Http\Controllers\Api\V1\BookController`。Web版の `App\Http\Controllers\BookController` と**同名クラスが2つ存在する**ので、`use` 文の取り違えに注意する。
 - `routes/api.php` に `v1` プレフィックスを付ける。`api` プレフィックスは RouteServiceProvider が自動で付けるので、`Route::prefix('api/v1')` と書くと `/api/api/v1` になる。
-- 基本段階では Policy を一切適用しない（認証なしのため）。応用の Sanctum 後付けで初めて `BookPolicy` を API に接続する。
-- 応用で `personal_access_tokens` テーブルを作る。基本段階では作らない。
+- 基本段階では Policy を一切適用しない（認証なしのため）。★応用の Sanctum 後付けで初めて `BookPolicy` を API に接続する。
+- ★応用段階で `personal_access_tokens` テーブルを作る。基本段階では作らない。
 - API はレスポンスがすべて JSON。flash / リダイレクトの概念は存在しない。
 
 ---
 
-## 10. テスト観点（要件シート シート10）
+## 10. ★ AP06: Sanctum APIトークン認証（応用）
 
-**全体要件（共通）**: 全テスト通過。`sail artisan test --coverage` で基本機能のみ60%超を目標。
+公開APIの書き込み系エンドポイント（POST/PUT/DELETE）に Laravel Sanctum のトークン認証を後付けする。読み取り系（AP01・AP02）は基本段階の挙動を維持し、認証不要のまま変更しない。
+
+### 10-1. 認証方式とトークンの入手経路
+
+**認証方式**
+
+- Bearerトークン方式。クライアントはリクエストヘッダに `Authorization: Bearer {plainTextToken}` を付与する。
+- ルート側で `auth:sanctum` ミドルウェアを適用する。適用対象は AP03 / AP04 / AP05 の3本のみ（§1）。
+- `App\Models\User` に `Laravel\Sanctum\HasApiTokens` トレイトを追加する。
+- トークンは `personal_access_tokens` テーブル（要件シート シート12 No.11）に保存する。
+
+**トークンの入手経路**
+
+トークン発行用のAPIエンドポイントは**新設しない**。要件シート シート13 のエンドポイント一覧は AP01〜AP05 の5本で確定しており、Bladeモックにもトークン発行・管理の画面が存在しないため、発行手段はアプリケーションの機能に含めない。
+
+| 用途 | 手段 |
+|---|---|
+| 自動テスト | `Laravel\Sanctum\Sanctum::actingAs($user)` を使用する |
+| 手動での動作確認・採点者による確認 | `sail artisan tinker` から `$user->createToken('manual')->plainTextToken` で発行する。この手順を README の「APIエンドポイント一覧」に記載する |
+
+- トークンの有効期限は設けない（`personal_access_tokens.expires_at` は NULL のまま）。
+- `abilities`（権限スコープ）は使用しない。
+- `expires_at` / `abilities` の列は Sanctum 標準マイグレーションのまま残す（CLAUDE.md 16章）。
+
+### 10-2. 認可
+
+| エンドポイント | 認証 | 認可 |
+|---|---|---|
+| AP03 `POST /api/v1/books` | 必須 | なし（登録前のリソースに所有者が存在しないため Policy を適用しない） |
+| AP04 `PUT /api/v1/books/{book}` | 必須 | `BookPolicy::update`（`Auth::id() === $book->user_id`） |
+| AP05 `DELETE /api/v1/books/{book}` | 必須 | `BookPolicy::delete`（同上） |
+
+- API 専用の Policy は作成しない。Web版と同一の `App\Policies\BookPolicy` をそのまま流用する（books.md §5）。
+- コントローラーの `update` / `destroy` の冒頭で `$this->authorize('update', $book)` / `$this->authorize('delete', $book)` を呼ぶ。
+- 論理削除済みの書籍を対象とした PUT・DELETE は、SoftDeletes の標準除外によりルートモデル紐付けが解決できず 404 になる（基本段階と同じ挙動を維持する）。認可判定より前に 404 が返るため、Policy 側での削除済み判定は不要。
+
+### 10-3. `user_id` の扱い（基本段階からの変更）
+
+- リクエストボディでの `user_id` 受領を廃止する。登録者は `Auth::id()`（トークンから解決されるユーザーID）から自動取得する。
+- `StoreApiBookRequest` / `UpdateApiBookRequest` のバリデーション対象から `user_id` を除外し、対応するエラーメッセージ（「登録者IDを指定してください」「指定された登録者が存在しません」）も削除する。
+- クライアントが `user_id` を送信してきた場合は無視する。エラーにはしない（バリデーション対象外のフィールドは Laravel の標準挙動でそのまま無視される）。
+- レスポンスに `user_id` を含めない方針は基本段階（AP03）から変更しない。
+
+### 10-4. エラーレスポンス
+
+| 状況 | ステータス | ボディ |
+|---|---|---|
+| トークンなし、または無効なトークン | 401 | `{"message": "認証が必要です。"}` |
+| 認証済みだが書籍の所有者でない（AP04 / AP05） | 403 | `{"message": "この操作を実行する権限がありません。"}` |
+| バリデーションエラー | 422 | 基本段階と同一（`{"message": "入力内容に誤りがあります。", "errors": {...}}`） |
+| 対象が存在しない、または論理削除済み | 404 | 基本段階と同一（`{"message": "指定された書籍が見つかりません。"}`） |
+
+**日本語化の実装**
+
+Laravel 標準の未認証応答は `{"message": "Unauthenticated."}`、認可失敗は `{"message": "This action is unauthorized."}` になる。AP01 の 422 と AP02 の 404 を日本語化しているのと同じ方針で、401 / 403 も日本語化する。`App\Exceptions\Handler` の `register()` に API リクエスト限定の差し替えを追加する。
+
+```php
+$this->renderable(function (AuthenticationException $e, Request $request) {
+    if ($request->is('api/*')) {
+        return response()->json(['message' => '認証が必要です。'], 401);
+    }
+});
+
+$this->renderable(function (AuthorizationException $e, Request $request) {
+    if ($request->is('api/*')) {
+        return response()->json(['message' => 'この操作を実行する権限がありません。'], 403);
+    }
+});
+```
+
+- `errors` キーは付けない（認証・認可エラー形式は `{"message": string}` のみと確定）。
+- API リクエストが未認証時にログイン画面へリダイレクトされないこと。`routes/api.php` のルートは常に JSON を返す。
+
+### 10-5. 導入手順（走行⑩）
+
+1. `sail composer require laravel/sanctum`
+2. Sanctum の設定ファイルとマイグレーションを公開する
+3. `sail artisan migrate` で `personal_access_tokens` テーブルを作成する
+4. `App\Models\User` に `HasApiTokens` トレイトを追加する
+5. `routes/api.php` を §1 の応用段階の定義に書き換える
+6. `StoreApiBookRequest` / `UpdateApiBookRequest` から `user_id` を除外する（§10-3）
+7. `Api\V1\BookController` の `store` に `Auth::id()` を、`update` / `destroy` に `$this->authorize()` を追加する
+8. `App\Exceptions\Handler` に 401 / 403 の日本語化を追加する（§10-4）
+
+読み取り系（AP01 / AP02）のコード・レスポンス・テストは一切変更しない。
+
+---
+
+## 11. テスト観点（要件シート シート10）
+
+**全体要件（共通）**: 全テスト通過。`sail artisan test --coverage` で基本機能のみ60%超、★応用機能込みで80%以上を目標。
 
 ### 機能テスト `tests/Feature/Api/BookApiTest.php`
 
@@ -372,3 +496,21 @@ $this->renderable(function (NotFoundHttpException $e, Request $request) {
 |---|---|
 | F-P11 | `db:seed` 実行後に users 5件・genres 10件・books 11件・reviews 32件が投入されている |
 | F-P12 | `db:seed` を2回実行しても `firstOrCreate` により重複が発生しない |
+
+### ★ 機能テスト `tests/Feature/Api/SanctumAuthTest.php`（シート10「Sanctum認証」）
+
+| # | 検証観点 |
+|---|---|
+| F-SA1 | 読み取り系の非認証維持 — `GET /api/v1/books` と `GET /api/v1/books/{book}` はトークンなしでも従来通り200が返る |
+| F-SA2 | 未認証の登録 — トークンなしで `POST /api/v1/books` を送信すると401が返る |
+| F-SA3 | 未認証の更新 — トークンなしで `PUT /api/v1/books/{book}` を送信すると401が返る |
+| F-SA4 | 未認証の削除 — トークンなしで `DELETE /api/v1/books/{book}` を送信すると401が返る |
+| F-SA5 | 認証済みの登録 — 有効なトークンで POST すると201が返り、登録者が当該トークンのユーザーになる |
+| F-SA6 | 所有者による更新・削除 — 自分が登録した書籍に対する認証済みの PUT で200、DELETE で204が返る |
+| F-SA7 | 他人の書籍の更新 — 他ユーザーが登録した書籍へ認証済みで PUT すると403が返る |
+| F-SA8 | 他人の書籍の削除 — 他ユーザーが登録した書籍へ認証済みで DELETE すると403が返る |
+| F-SA9 | `user_id` の受領廃止 — POST・PUT のリクエストボディに `user_id` を含めても無視され、認証ユーザーのIDが登録者として記録される。`user_id` を含めないリクエストが422にならない |
+| F-SA10 | バリデーションの維持 — 認証済みで不正なデータを送信した場合は従来通り422が返る |
+| F-SA11 | エラー応答の日本語化 — 401・403のいずれも `message` キーを持つ日本語JSONであり、Laravel標準の英語文言が露出しない |
+
+F-SA2〜F-SA4 は HTTPメソッドごとに個別のリクエストで検証し、いずれか1つの結果で他を代表させない（CLAUDE.md 12-4 規則3）。

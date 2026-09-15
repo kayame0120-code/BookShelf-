@@ -10,6 +10,7 @@ use App\Http\Resources\BookListResource;
 use App\Http\Resources\BookResource;
 use App\Models\Book;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class BookController extends Controller
@@ -58,7 +59,7 @@ class BookController extends Controller
     public function store(StoreApiBookRequest $request)
     {
         $book = DB::transaction(function () use ($request) {
-            $book = Book::create($request->validated());
+            $book = Book::create($request->validated() + ['user_id' => Auth::id()]);
             $book->genres()->sync($request->genres);
 
             return $book;
@@ -74,6 +75,8 @@ class BookController extends Controller
      */
     public function update(UpdateApiBookRequest $request, Book $book)
     {
+        $this->authorize('update', $book);
+
         DB::transaction(function () use ($request, $book) {
             $book->update($request->validated());
             $book->genres()->sync($request->genres);
@@ -89,6 +92,8 @@ class BookController extends Controller
      */
     public function destroy(Book $book)
     {
+        $this->authorize('delete', $book);
+
         $book->delete();
 
         return response()->noContent();
