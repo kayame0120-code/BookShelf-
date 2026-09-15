@@ -37,6 +37,7 @@ class ReadingPlan extends Model
 
     public function book(): BelongsTo
     {
-        return $this->belongsTo(Book::class);
+        // 論理削除済みの書籍に紐づく読書計画も一覧・編集で表示するため（CLAUDE.md §9-1）
+        return $this->belongsTo(Book::class)->withTrashed();
     }
 }
