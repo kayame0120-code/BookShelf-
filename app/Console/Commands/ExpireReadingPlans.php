@@ -23,7 +23,7 @@ class ExpireReadingPlans extends Command
      *
      * @var string
      */
-    protected $description = '期日を3日以上過ぎた進行中の読書計画を期限切れに更新する';
+    protected $description = '期日が本日の3日前に一致する進行中の読書計画を期限切れに更新する';
 
     /**
      * Execute the console command.
@@ -32,7 +32,7 @@ class ExpireReadingPlans extends Command
     {
         DB::transaction(function (): void {
             ReadingPlan::where('status', ReadingPlanStatus::InProgress)
-                ->where('target_date', '<=', Carbon::today()->subDays(3))
+                ->where('target_date', Carbon::today()->subDays(3))
                 ->get()
                 ->each(function (ReadingPlan $plan): void {
                     try {

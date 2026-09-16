@@ -23,7 +23,7 @@ class ReadingPlanController extends Controller
 
         $readingPlans = ReadingPlan::where('user_id', Auth::id())
             ->with('book')
-            ->when($currentStatus, fn ($query) => $query->where('status', $currentStatus))
+            ->when(filled($currentStatus), fn ($query) => $query->where('status', $currentStatus))
             ->latest()
             ->get();
 
@@ -35,7 +35,7 @@ class ReadingPlanController extends Controller
      */
     public function create(): View
     {
-        $books = Book::select('id', 'title', 'author')->orderBy('id')->get();
+        $books = Book::orderBy('title')->get();
 
         return view('reading-plans.create', compact('books'));
     }
