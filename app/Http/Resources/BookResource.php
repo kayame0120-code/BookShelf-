@@ -4,7 +4,6 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Support\Carbon;
 
 class BookResource extends JsonResource
 {
@@ -20,7 +19,7 @@ class BookResource extends JsonResource
             'title' => $this->title,
             'author' => $this->author,
             'isbn' => $this->isbn,
-            'published_date' => Carbon::parse($this->published_date)->format('Y-m-d'),
+            'published_date' => $this->published_date?->format('Y-m-d'),
             'description' => $this->description,
             'image_url' => $this->image_url,
             'average_rating' => round((float) $this->reviews_avg_rating, 1),
