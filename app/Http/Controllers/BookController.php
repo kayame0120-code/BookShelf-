@@ -61,7 +61,7 @@ class BookController extends Controller
     public function searchByIsbn(string $isbn): JsonResponse
     {
         if (! preg_match('/^[0-9]{13}$/', $isbn)) {
-            return response()->json(['error' => 'ISBNは13桁の数字で入力してください'], 422);
+            return response()->json(['message' => 'ISBNは13桁の数字で入力してください'], 422);
         }
 
         try {
@@ -69,16 +69,16 @@ class BookController extends Controller
                 'q' => "isbn:{$isbn}",
             ]);
         } catch (ConnectionException $e) {
-            return response()->json(['error' => '書籍情報の取得に失敗しました'], 502);
+            return response()->json(['message' => '書籍情報の取得に失敗しました'], 502);
         }
 
         if ($response->failed()) {
-            return response()->json(['error' => '書籍情報の取得に失敗しました'], 502);
+            return response()->json(['message' => '書籍情報の取得に失敗しました'], 502);
         }
 
         $totalItems = $response->json('totalItems', 0);
         if ($totalItems === 0) {
-            return response()->json(['error' => '該当する書籍が見つかりませんでした'], 404);
+            return response()->json(['message' => '該当する書籍が見つかりませんでした'], 404);
         }
 
         $volumeInfo = $response->json('items.0.volumeInfo', []);
