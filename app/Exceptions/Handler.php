@@ -5,6 +5,7 @@ namespace App\Exceptions;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
 use Illuminate\Http\Request;
+use Illuminate\Session\TokenMismatchException;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Throwable;
@@ -46,6 +47,24 @@ class Handler extends ExceptionHandler
         $this->renderable(function (AccessDeniedHttpException $e, Request $request) {
             if ($request->is('api/*')) {
                 return response()->json(['message' => 'この操作を実行する権限がありません。'], 403);
+            }
+        });
+
+        $this->renderable(function (NotFoundHttpException $e, Request $request) {
+            if (! $request->is('api/*')) {
+                return response()->view('errors.404', [], 404);
+            }
+        });
+
+        $this->renderable(function (AccessDeniedHttpException $e, Request $request) {
+            if (! $request->is('api/*')) {
+                return response()->view('errors.403', [], 403);
+            }
+        });
+
+        $this->renderable(function (TokenMismatchException $e, Request $request) {
+            if (! $request->is('api/*')) {
+                return response()->view('errors.419', [], 419);
             }
         });
     }
