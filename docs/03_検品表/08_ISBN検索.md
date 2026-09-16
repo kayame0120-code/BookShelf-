@@ -39,12 +39,13 @@ sail artisan route:list --path=books
 
 | No. | 判定条件（YES/NO） | 確認方法 | 違反時処置 |
 |---|---|---|---|
-| B-1 | 13桁でないISBN（例: `123`）を入力すると422で`{"error":"ISBNは13桁の数字で入力してください"}`が返る | 実機 | 差し戻し |
-| B-2 | 実在しない13桁ISBN（例: `9999999999999`）を入力すると404で`{"error":"該当する書籍が見つかりませんでした"}`が返る | 実機（実際にGoogle Books APIへ通信させて確認） | 差し戻し |
-| B-3 | 通信エラー時（接続失敗・5xx）に502で`{"error":"書籍情報の取得に失敗しました"}`が返る実装になっている | ソース確認（`try/catch`で`ConnectionException`を捕捉し502を返す分岐、および`$response->failed()`時に502を返す分岐の両方が存在すること）。実機での再現確認は不要（走行⑭の`Http::fake()`自動テストで動作確認する） | 差し戻し |
+| B-1 | 13桁でないISBN（例: `123`）を入力すると422で`{"message":"ISBNは13桁の数字で入力してください"}`が返る | 実機 | 差し戻し |
+| B-2 | 実在しない13桁ISBN（例: `9999999999999`）を入力すると404で`{"message":"該当する書籍が見つかりませんでした"}`が返る | 実機（実際にGoogle Books APIへ通信させて確認） | 差し戻し |
+| B-3 | 通信エラー時（接続失敗・5xx）に502で`{"message":"書籍情報の取得に失敗しました"}`が返る実装になっている | ソース確認（`try/catch`で`ConnectionException`を捕捉し502を返す分岐、および`$response->failed()`時に502を返す分岐の両方が存在すること）。実機での再現確認は不要（走行⑭の`Http::fake()`自動テストで動作確認する） | 差し戻し |
 | B-4 | `Illuminate\Support\Facades\Http`経由で外部通信している（`curl_exec`・`file_get_contents`・Guzzleクライアントの直接インスタンス化がない） | ソース確認 | 差し戻し |
 | B-5 | 未ログインで`/books/isbn/{isbn}`にアクセスすると`/login`へリダイレクトされる（401 JSONではない） | 実機（ログアウト状態で直接URLアクセス） | 差し戻し |
 | B-6 | `routes/web.php`で`books.searchByIsbn`が`books.show`より前に定義されている | `route:list`の出力での行順確認 | 差し戻し |
+| B-7 | ISBN検索のエラー応答3種（422・404・502）のキーがすべて`message`である（`error`キーが残っていない） | ソース確認（`grep -n "'error'" app/Http/Controllers/BookController.php` が空であること） | 差し戻し |
 
 ## C. booksテーブルのnullable化
 

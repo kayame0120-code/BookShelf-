@@ -47,11 +47,11 @@ Route::get('/books/isbn/{isbn}', [BookController::class, 'searchByIsbn'])
 
 ## 2. リクエスト・バリデーション
 
-`{isbn}`は13桁の数字文字列であることをコントローラー内で検証する（この1項目だけのためにFormRequestを作らず、コントローラー冒頭で正規表現チェックする）。
+`{isbn}`は13桁の数字文字列であることをコントローラー内で検証する（この1項目だけのためにFormRequestを作らず、コントローラー冒頭で正規表現チェックする）。桁数不正時のエラー応答は、キーを`message`とし、HTTPステータス422で返す。
 
 ```php
 if (! preg_match('/^[0-9]{13}$/', $isbn)) {
-    return response()->json(['error' => 'ISBNは13桁の数字で入力してください'], 422);
+    return response()->json(['message' => 'ISBNは13桁の数字で入力してください'], 422);
 }
 ```
 
@@ -73,10 +73,12 @@ $response = Http::timeout(5)->get('https://www.googleapis.com/books/v1/volumes',
 
 ## 4. レスポンス分岐と自動入力用JSONの組み立て
 
+エラー系レスポンスのキーはすべて`message`に統一する（Web画面向けエラー応答・API向けエラー応答を通じてアプリ全体で応答キーを`message`に揃える方針に従う）。
+
 | 状況 | ステータス | レスポンスボディ |
 |---|---|---|
-| 通信自体が失敗（接続エラー・タイムアウト・5xx） | 502 | `{"error": "書籍情報の取得に失敗しました"}` |
-| 通信成功・`totalItems`が0（該当書籍なし） | 404 | `{"error": "該当する書籍が見つかりませんでした"}` |
+| 通信自体が失敗（接続エラー・タイムアウト・5xx） | 502 | `{"message": "書籍情報の取得に失敗しました"}` |
+| 通信成功・`totalItems`が0（該当書籍なし） | 404 | `{"message": "該当する書籍が見つかりませんでした"}` |
 | 通信成功・`totalItems`が1以上 | 200 | `{"title": ..., "author": ..., "description": ..., "image_url": ..., "published_date": ...}` |
 
 実装方針:
@@ -85,16 +87,16 @@ $response = Http::timeout(5)->get('https://www.googleapis.com/books/v1/volumes',
 try {
     $response = Http::timeout(5)->get(...);
 } catch (\Illuminate\Http\Client\ConnectionException $e) {
-    return response()->json(['error' => '書籍情報の取得に失敗しました'], 502);
+    return response()->json(['message' => '書籍情報の取得に失敗しました'], 502);
 }
 
 if ($response->failed()) {
-    return response()->json(['error' => '書籍情報の取得に失敗しました'], 502);
+    return response()->json(['message' => '書籍情報の取得に失敗しました'], 502);
 }
 
 $totalItems = $response->json('totalItems', 0);
 if ($totalItems === 0) {
-    return response()->json(['error' => '該当する書籍が見つかりませんでした'], 404);
+    return response()->json(['message' => '該当する書籍が見つかりませんでした'], 404);
 }
 
 $volumeInfo = $response->json('items.0.volumeInfo', []);
@@ -112,7 +114,8 @@ return response()->json([
 
 - `authors`は配列で返ってくる。複数著者は`、`（読点）で連結して1つの文字列にする。
 - `publishedDate`はGoogle Books API側の都合で`"2012"`のような年のみ・`"2012-06"`のような年月のみの場合がある。この発注書ではフォーマット補正を行わず、取得した文字列をそのまま返す。理由: この値はフォーム自動入力の下書きであり、最終的な保存は書籍登録・編集のバリデーション（§5）を通るため、この時点での厳密な補正は不要と判断する。
-- レスポンスキー名（`title`・`author`・`description`・`image_url`・`published_date`）はシート10 R25の完了条件に完全一致させること。キー名を変えるとBlade側の自動入力JavaScript（提供済み・変更不可）が値を拾えなくなる。
+- 成功時レスポンスキー名（`title`・`author`・`description`・`image_url`・`published_date`）はシート10 R25の完了条件に完全一致させること。キー名を変えるとBlade側の自動入力JavaScript（提供済み・変更不可）が値を拾えなくなる。
+- エラー時レスポンスキーは`message`とする。成功時のフォーム自動入力用キー（`title`等）とは用途が異なり、Blade側の自動入力JavaScriptは成功時のキーのみを参照するため、エラー時キーを`message`にしても自動入力挙動には影響しない。
 
 ---
 
