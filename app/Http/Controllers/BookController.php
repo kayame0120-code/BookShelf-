@@ -64,10 +64,13 @@ class BookController extends Controller
             return response()->json(['message' => 'ISBNは13桁の数字で入力してください'], 422);
         }
 
+        $query = ['q' => "isbn:{$isbn}"];
+        if ($apiKey = config('services.google_books.key')) {
+            $query['key'] = $apiKey;
+        }
+
         try {
-            $response = Http::timeout(5)->get('https://www.googleapis.com/books/v1/volumes', [
-                'q' => "isbn:{$isbn}",
-            ]);
+            $response = Http::timeout(5)->get('https://www.googleapis.com/books/v1/volumes', $query);
         } catch (ConnectionException $e) {
             return response()->json(['message' => '書籍情報の取得に失敗しました'], 502);
         }

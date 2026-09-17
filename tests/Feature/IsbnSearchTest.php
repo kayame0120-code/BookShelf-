@@ -128,4 +128,38 @@ class IsbnSearchTest extends TestCase
             ->assertStatus(502)
             ->assertJson(['message' => '書籍情報の取得に失敗しました']);
     }
+
+    /** APIキーが設定されている場合、Google Books へのリクエストに key が付与される */
+    public function test_api_key_is_sent_when_configured(): void
+    {
+        config()->set('services.google_books.key', 'test-key-123');
+        Http::fake([
+            'www.googleapis.com/*' => Http::response([
+                'totalItems' => 1,
+                'items' => [['volumeInfo' => ['title' => 'X']]],
+            ], 200),
+        ]);
+
+        $user = User::factory()->create();
+        $this->actingAs($user)->getJson('/books/isbn/9784000000001')->assertOk();
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'key=test-key-123'));
+    }
+
+    /** APIキーが未設定の場合、リクエストに key を付けない */
+    public function test_api_key_absent_when_not_configured(): void
+    {
+        config()->set('services.google_books.key', null);
+        Http::fake([
+            'www.googleapis.com/*' => Http::response([
+                'totalItems' => 1,
+                'items' => [['volumeInfo' => ['title' => 'X']]],
+            ], 200),
+        ]);
+
+        $user = User::factory()->create();
+        $this->actingAs($user)->getJson('/books/isbn/9784000000001')->assertOk();
+
+        Http::assertSent(fn ($request) => ! str_contains($request->url(), 'key='));
+    }
 }
