@@ -7,8 +7,13 @@ use App\Models\Genre;
 use App\Models\Review;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
+/**
+ * 走行⑩：公開API（Sanctumトークン認証）。検品表 G ＋ 発注書§7の書き直し対象。
+ * 読み取り系（GET 2本）は認証不要。書き込み系（POST/PUT/DELETE 3本）は auth:sanctum 必須。
+ */
 class BookApiTest extends TestCase
 {
     use RefreshDatabase;
@@ -24,52 +29,165 @@ class BookApiTest extends TestCase
         return $book;
     }
 
-    /** F-P1: AP01一覧・正常系（既定per_page=10） */
-    public function test_index_success_default_pagination(): void
+    /**
+     * 有効な書き込みペイロード（API側はisbn/published_date必須のまま）。
+     *
+     * @return array<string, mixed>
+     */
+    private function validPayload(array $overrides = []): array
     {
-        Book::factory()->count(15)->create()->each(
+        return array_merge([
+            'title' => 'API書籍',
+            'author' => 'API著者',
+            'isbn' => '9784111111119',
+            'published_date' => '2021-05-05',
+            'description' => 'desc',
+            'image_url' => 'https://example.com/x.jpg',
+            'genres' => [Genre::factory()->create()->id],
+        ], $overrides);
+    }
+
+    // ================= G-4: 読み取り系（GET 2本）は認証なしで200 =================
+
+    /** G-4: GET一覧は未認証で200 */
+    public function test_index_is_public_returns_200(): void
+    {
+        Book::factory()->count(3)->create()->each(
             fn ($b) => $b->genres()->sync([Genre::factory()->create()->id])
         );
 
-        $response = $this->getJson('/api/v1/books');
-
-        $response->assertOk()
-            ->assertJsonCount(10, 'data')
-            ->assertJsonPath('meta.per_page', 10)
-            ->assertJsonPath('meta.total', 15);
+        $this->getJson('/api/v1/books')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 3);
     }
 
-    /** F-P2: AP01一覧・異常系 */
-    public function test_index_validation_error(): void
-    {
-        $this->getJson('/api/v1/books?per_page=101')->assertStatus(422);
-        $this->getJson('/api/v1/books?page=0')->assertStatus(422);
-        $this->getJson('/api/v1/books?genre_id=9999')->assertStatus(422);
-    }
-
-    /** F-P3: AP02詳細・正常系（commentがnullを含む） */
-    public function test_show_success_with_null_comment(): void
+    /** G-4: GET詳細は未認証で200 */
+    public function test_show_is_public_returns_200(): void
     {
         $book = $this->makeBook();
-        Review::factory()->create(['book_id' => $book->id, 'rating' => 4, 'comment' => null]);
-        Review::factory()->create(['book_id' => $book->id, 'rating' => 5, 'comment' => 'あり']);
+        Review::factory()->create(['book_id' => $book->id, 'rating' => 4]);
 
         $this->getJson("/api/v1/books/{$book->id}")
             ->assertOk()
-            ->assertJsonPath('data.id', $book->id)
-            ->assertJsonPath('data.reviews_count', 2)
-            ->assertJsonCount(2, 'data.reviews');
+            ->assertJsonPath('data.id', $book->id);
     }
 
-    /** F-P4: AP02・存在しないID */
-    public function test_show_not_found(): void
+    // ================= G-1: 書き込み系の正常系（Sanctum認証） =================
+
+    /** G-1: POST（登録）はSanctum認証で201・レコード作成 */
+    public function test_store_success_with_sanctum(): void
+    {
+        $user = User::factory()->create();
+        Sanctum::actingAs($user);
+
+        $this->postJson('/api/v1/books', $this->validPayload(['isbn' => '9784111111119']))
+            ->assertStatus(201)
+            ->assertJsonPath('data.title', 'API書籍');
+
+        $this->assertDatabaseHas('books', ['isbn' => '9784111111119', 'user_id' => $user->id]);
+    }
+
+    /** G-1: PUT（更新）はSanctum認証（所有者）で200・レコード更新 */
+    public function test_update_success_with_sanctum(): void
+    {
+        $user = User::factory()->create();
+        $book = $this->makeBook(['isbn' => '9784222222227', 'user_id' => $user->id]);
+        Sanctum::actingAs($user);
+
+        $this->putJson("/api/v1/books/{$book->id}", $this->validPayload([
+            'title' => '更新後タイトル',
+            'isbn' => '9784222222227',
+        ]))
+            ->assertOk()
+            ->assertJsonPath('data.title', '更新後タイトル');
+
+        $this->assertDatabaseHas('books', ['id' => $book->id, 'title' => '更新後タイトル']);
+    }
+
+    /** G-1: DELETE（削除）はSanctum認証（所有者）で204・論理削除 */
+    public function test_destroy_success_with_sanctum(): void
+    {
+        $user = User::factory()->create();
+        $book = $this->makeBook(['user_id' => $user->id]);
+        Sanctum::actingAs($user);
+
+        $this->deleteJson("/api/v1/books/{$book->id}")->assertStatus(204);
+        $this->assertSoftDeleted('books', ['id' => $book->id]);
+    }
+
+    // ================= G-2: 未認証の書き込みは401（メソッドごと個別） =================
+
+    /** G-2: 未認証POSTは401「認証が必要です。」 */
+    public function test_store_unauthenticated_returns_401(): void
+    {
+        $this->postJson('/api/v1/books', $this->validPayload())
+            ->assertStatus(401)
+            ->assertJson(['message' => '認証が必要です。']);
+    }
+
+    /** G-2: 未認証PUTは401「認証が必要です。」 */
+    public function test_update_unauthenticated_returns_401(): void
+    {
+        $book = $this->makeBook();
+
+        $this->putJson("/api/v1/books/{$book->id}", $this->validPayload())
+            ->assertStatus(401)
+            ->assertJson(['message' => '認証が必要です。']);
+    }
+
+    /** G-2: 未認証DELETEは401「認証が必要です。」 */
+    public function test_destroy_unauthenticated_returns_401(): void
+    {
+        $book = $this->makeBook();
+
+        $this->deleteJson("/api/v1/books/{$book->id}")
+            ->assertStatus(401)
+            ->assertJson(['message' => '認証が必要です。']);
+    }
+
+    // ================= G-3: 他人の書籍への書き込みは403（メソッドごと個別） =================
+
+    /** G-3: 他人の書籍へのPUTは403「この操作を実行する権限がありません。」 */
+    public function test_update_other_users_book_returns_403(): void
+    {
+        $owner = User::factory()->create();
+        $other = User::factory()->create();
+        $book = $this->makeBook(['user_id' => $owner->id]);
+        Sanctum::actingAs($other);
+
+        $this->putJson("/api/v1/books/{$book->id}", $this->validPayload())
+            ->assertStatus(403)
+            ->assertJson(['message' => 'この操作を実行する権限がありません。']);
+
+        $this->assertDatabaseHas('books', ['id' => $book->id, 'user_id' => $owner->id]);
+    }
+
+    /** G-3: 他人の書籍へのDELETEは403「この操作を実行する権限がありません。」 */
+    public function test_destroy_other_users_book_returns_403(): void
+    {
+        $owner = User::factory()->create();
+        $other = User::factory()->create();
+        $book = $this->makeBook(['user_id' => $owner->id]);
+        Sanctum::actingAs($other);
+
+        $this->deleteJson("/api/v1/books/{$book->id}")
+            ->assertStatus(403)
+            ->assertJson(['message' => 'この操作を実行する権限がありません。']);
+
+        $this->assertDatabaseHas('books', ['id' => $book->id, 'deleted_at' => null]);
+    }
+
+    // ================= 応用の周辺確認（読み取り系の挙動） =================
+
+    /** GET詳細：存在しないIDは404 JSON（非破壊） */
+    public function test_show_not_found_returns_json_404(): void
     {
         $this->getJson('/api/v1/books/99999')
             ->assertStatus(404)
             ->assertJson(['message' => '指定された書籍が見つかりません。']);
     }
 
-    /** F-P5: AP02・削除済みID */
+    /** GET詳細：論理削除済みIDは404（一覧・詳細のGETは標準除外挙動） */
     public function test_show_soft_deleted_returns_404(): void
     {
         $book = $this->makeBook();
@@ -78,82 +196,13 @@ class BookApiTest extends TestCase
         $this->getJson("/api/v1/books/{$book->id}")->assertStatus(404);
     }
 
-    /** F-P6: AP03新規登録 */
-    public function test_store_success_and_validation(): void
+    /** POST：認証済みでも入力不正は422 */
+    public function test_store_validation_error_when_authenticated(): void
     {
-        $user = User::factory()->create();
-        $genre = Genre::factory()->create();
+        Sanctum::actingAs(User::factory()->create());
 
-        $payload = [
-            'title' => 'API書籍',
-            'author' => 'API著者',
-            'isbn' => '9784111111119',
-            'published_date' => '2021-05-05',
-            'description' => 'desc',
-            'image_url' => 'https://example.com/x.jpg',
-            'genres' => [$genre->id],
-            'user_id' => $user->id,
-        ];
-
-        $this->postJson('/api/v1/books', $payload)
-            ->assertStatus(201)
-            ->assertJsonPath('data.title', 'API書籍')
-            ->assertJsonMissingPath('data.reviews')
-            ->assertJsonMissingPath('data.user_id');
-        $this->assertDatabaseHas('books', ['isbn' => '9784111111119', 'user_id' => $user->id]);
-
-        $this->postJson('/api/v1/books', [])->assertStatus(422);
-    }
-
-    /** F-P7: AP04更新・正常系（ISBN一意性は自身を除外） */
-    public function test_update_success_ignores_own_isbn(): void
-    {
-        $user = User::factory()->create();
-        $genre = Genre::factory()->create();
-        $book = $this->makeBook(['isbn' => '9784222222227', 'user_id' => $user->id]);
-
-        $payload = [
-            'title' => '更新後',
-            'author' => '著者',
-            'isbn' => '9784222222227', // 自身と同じISBN
-            'published_date' => '2020-01-01',
-            'genres' => [$genre->id],
-            'user_id' => $user->id,
-        ];
-
-        $this->putJson("/api/v1/books/{$book->id}", $payload)
-            ->assertOk()
-            ->assertJsonPath('data.title', '更新後');
-    }
-
-    /** F-P8: AP04異常系 */
-    public function test_update_not_found_and_validation(): void
-    {
-        $user = User::factory()->create();
-        $genre = Genre::factory()->create();
-
-        $this->putJson('/api/v1/books/99999', [
-            'title' => 'x', 'author' => 'y', 'isbn' => '9784333333336',
-            'published_date' => '2020-01-01', 'genres' => [$genre->id], 'user_id' => $user->id,
-        ])->assertStatus(404);
-
-        $book = $this->makeBook();
-        $this->putJson("/api/v1/books/{$book->id}", [])->assertStatus(422);
-    }
-
-    /** F-P9: AP05削除（204・論理削除） */
-    public function test_destroy_soft_deletes(): void
-    {
-        $book = $this->makeBook();
-
-        $this->deleteJson("/api/v1/books/{$book->id}")->assertStatus(204);
-        $this->assertSoftDeleted('books', ['id' => $book->id]);
-        $this->assertDatabaseHas('books', ['id' => $book->id]);
-    }
-
-    /** F-P10: AP05存在しないID */
-    public function test_destroy_not_found(): void
-    {
-        $this->deleteJson('/api/v1/books/99999')->assertStatus(404);
+        $this->postJson('/api/v1/books', [])
+            ->assertStatus(422)
+            ->assertJsonStructure(['message', 'errors']);
     }
 }

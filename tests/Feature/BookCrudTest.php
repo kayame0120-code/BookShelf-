@@ -51,9 +51,10 @@ class BookCrudTest extends TestCase
         $user = User::factory()->create();
         $genre = Genre::factory()->create();
 
-        // 必須未入力・genre未選択
+        // 必須未入力・genre未選択（isbn/published_dateは応用でnullable化のため必須エラーは立たない）
         $this->actingAs($user)->post('/books', [])
-            ->assertSessionHasErrors(['title', 'author', 'isbn', 'published_date', 'genres']);
+            ->assertSessionHasErrors(['title', 'author', 'genres'])
+            ->assertSessionDoesntHaveErrors(['isbn', 'published_date']);
 
         // isbn 13桁でない
         $this->actingAs($user)->post('/books', $this->validPayload([$genre->id], ['isbn' => '123']))
