@@ -117,3 +117,24 @@ Tutorial 13のハンズオンでは、主に以下のファイルを編集・作
 ### APIテストツール
 
 本カリキュラムでは、VSCode拡張機能の **Thunder Client** を使用して動作確認を行います。
+
+## テスト
+
+自動テストは PHPUnit（`tests/Feature/`・`tests/Unit/`）で実装しています。
+
+* **全テスト実行**: `./vendor/bin/sail artisan test`
+* **カバレッジ確認**: `./vendor/bin/sail artisan test --coverage`
+* **整形チェック**: `./vendor/bin/sail bin pint --test`
+
+### カバレッジ方針（説明責任ベース）
+
+合格条件はカバレッジの数値ではなく「説明のつかない未カバー行がゼロであること」です（CLAUDE.md 13-A-4）。アプリが使う機能の未カバー行はテストで潰し、残す行は理由付きで除外リストに記載します。
+
+未カバーのまま残している行の一覧と理由は **`docs/04_検品結果/カバレッジ除外リスト.md`** を参照してください。要約すると、残しているのは次のいずれかに該当する行のみです。
+
+* フレームワークが自動生成し、どのルート・画面からも到達しないコード（`TrustHosts`、`BroadcastServiceProvider`）。
+* フレームワークの例外変換により到達しないコード（`Handler` の `TokenMismatchException` 用 renderable。419ページ自体は標準のビュー解決で描画され、テストで確認済み）。
+* 基本認証（走行①）の画面描画で本走行のスコープ外の行（`FortifyServiceProvider` のログイン／登録ビュー）。
+* バッチのレコード単位の防御的例外ログ（`ExpireReadingPlans` / `SendReadingPlanReminders` の `catch`）。正常・異常いずれの業務条件でも到達しない。
+
+除外リストに載っていない未カバー行は存在しません。
