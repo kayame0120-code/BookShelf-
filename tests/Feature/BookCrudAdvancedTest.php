@@ -34,6 +34,23 @@ class BookCrudAdvancedTest extends TestCase
         ], $overrides);
     }
 
+    /** 書籍登録フォーム表示：ジャンル選択肢を含む（BookController::create） */
+    public function test_create_form_displayed_with_genres(): void
+    {
+        $user = User::factory()->create();
+        Genre::factory()->create(['name' => '登録フォームのジャンル']);
+
+        $this->actingAs($user)->get('/books/create')
+            ->assertOk()
+            ->assertSee('登録フォームのジャンル');
+    }
+
+    /** 書籍登録フォームは未認証だと/loginへリダイレクト */
+    public function test_create_form_requires_authentication(): void
+    {
+        $this->get('/books/create')->assertRedirect('/login');
+    }
+
     /** H-1: isbn・published_dateを空のまま登録が成功する（nullable） */
     public function test_store_succeeds_with_empty_isbn_and_published_date(): void
     {

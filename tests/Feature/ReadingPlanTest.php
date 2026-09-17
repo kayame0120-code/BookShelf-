@@ -229,4 +229,68 @@ class ReadingPlanTest extends TestCase
 
         $this->actingAs($user)->post("/reading-plans/{$plan->id}/complete")->assertForbidden();
     }
+
+    // ================= 画面表示・状態絞り込み（差し戻し 4：index/create/editの未通過分岐） =================
+
+    /** index：status無指定は自分の計画を全件表示する（filled=falseの分岐） */
+    public function test_index_without_status_shows_all_own_plans(): void
+    {
+        $user = User::factory()->create();
+        $inProgress = $this->makePlan($user, Book::factory()->create(['title' => '進行中の本']), ReadingPlanStatus::InProgress, now()->addDays(3)->toDateString());
+        $completed = $this->makePlan($user, Book::factory()->create(['title' => '完了の本']), ReadingPlanStatus::Completed, now()->subDays(1)->toDateString(), now()->toDateTimeString());
+        // 他人の計画は表示されない。
+        $this->makePlan(User::factory()->create(), Book::factory()->create(['title' => '他人の本']), ReadingPlanStatus::InProgress, now()->addDays(3)->toDateString());
+
+        $response = $this->actingAs($user)->get('/reading-plans');
+        $response->assertOk();
+        $this->assertCount(2, $response->viewData('readingPlans'));
+        $response->assertSee('進行中の本')->assertSee('完了の本')->assertDontSee('他人の本');
+    }
+
+    /** index：status指定（有効値in_progress）で該当ステータスのみに絞り込まれる（filled=trueの分岐） */
+    public function test_index_with_valid_status_filters(): void
+    {
+        $user = User::factory()->create();
+        $this->makePlan($user, Book::factory()->create(['title' => '進行中だけ表示']), ReadingPlanStatus::InProgress, now()->addDays(3)->toDateString());
+        $this->makePlan($user, Book::factory()->create(['title' => '完了は除外']), ReadingPlanStatus::Completed, now()->subDays(1)->toDateString(), now()->toDateTimeString());
+
+        $response = $this->actingAs($user)->get('/reading-plans?status=in_progress');
+        $response->assertOk();
+        $this->assertCount(1, $response->viewData('readingPlans'));
+        $response->assertSee('進行中だけ表示')->assertDontSee('完了は除外');
+        $this->assertSame('in_progress', $response->viewData('currentStatus'));
+    }
+
+    /** index：未定義のstatus値でもエラーにならず0件で表示される */
+    public function test_index_with_undefined_status_returns_empty(): void
+    {
+        $user = User::factory()->create();
+        $this->makePlan($user, Book::factory()->create(['title' => 'どれにも該当しない絞り込み']), ReadingPlanStatus::InProgress, now()->addDays(3)->toDateString());
+
+        $response = $this->actingAs($user)->get('/reading-plans?status=not_a_real_status');
+        $response->assertOk();
+        $this->assertCount(0, $response->viewData('readingPlans'));
+    }
+
+    /** create：新規作成フォームが表示される（書籍選択肢を含む） */
+    public function test_create_form_displayed(): void
+    {
+        $user = User::factory()->create();
+        Book::factory()->create(['title' => '選択肢に出る本']);
+
+        $this->actingAs($user)->get('/reading-plans/create')
+            ->assertOk()
+            ->assertSee('選択肢に出る本');
+    }
+
+    /** edit：本人は編集フォームを表示できる（editの正常系・authorize通過） */
+    public function test_owner_can_view_edit_form(): void
+    {
+        $user = User::factory()->create();
+        $plan = $this->makePlan($user, Book::factory()->create(['title' => '編集対象の本']), ReadingPlanStatus::InProgress, now()->addDays(3)->toDateString());
+
+        $this->actingAs($user)->get("/reading-plans/{$plan->id}/edit")
+            ->assertOk()
+            ->assertSee('編集対象の本');
+    }
 }

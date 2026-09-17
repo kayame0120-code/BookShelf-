@@ -72,6 +72,39 @@ class BookApiTest extends TestCase
             ->assertJsonPath('data.id', $book->id);
     }
 
+    /** 一覧：keyword絞り込みで該当書籍のみ返る（BookController::index の keyword 分岐） */
+    public function test_index_keyword_filter(): void
+    {
+        $hit = Book::factory()->create(['title' => 'APIキーワードヒット本', 'author' => '著者X']);
+        $hit->genres()->sync([Genre::factory()->create()->id]);
+        $miss = Book::factory()->create(['title' => '無関係の本', 'author' => '著者Y']);
+        $miss->genres()->sync([Genre::factory()->create()->id]);
+
+        $this->getJson('/api/v1/books?keyword=キーワードヒット')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonFragment(['id' => $hit->id])
+            ->assertJsonMissing(['id' => $miss->id]);
+    }
+
+    /** 一覧：genre_id絞り込みで該当書籍のみ返る（BookController::index の genre_id 分岐） */
+    public function test_index_genre_filter(): void
+    {
+        $genre = Genre::factory()->create();
+        $otherGenre = Genre::factory()->create();
+
+        $inGenre = Book::factory()->create(['title' => '対象ジャンルの本']);
+        $inGenre->genres()->sync([$genre->id]);
+        $outGenre = Book::factory()->create(['title' => '別ジャンルの本']);
+        $outGenre->genres()->sync([$otherGenre->id]);
+
+        $this->getJson('/api/v1/books?genre_id='.$genre->id)
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonFragment(['id' => $inGenre->id])
+            ->assertJsonMissing(['id' => $outGenre->id]);
+    }
+
     // ================= G-1: 書き込み系の正常系（Sanctum認証） =================
 
     /** G-1: POST（登録）はSanctum認証で201・レコード作成 */

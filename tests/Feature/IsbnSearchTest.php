@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -104,6 +105,21 @@ class IsbnSearchTest extends TestCase
         Http::fake([
             'www.googleapis.com/*' => Http::response('', 500),
         ]);
+
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->getJson('/books/isbn/9784000000001')
+            ->assertStatus(502)
+            ->assertJson(['message' => '書籍情報の取得に失敗しました']);
+    }
+
+    /** E-3: 接続例外（ConnectionException）も502「書籍情報の取得に失敗しました」 */
+    public function test_isbn_connection_exception_returns_502(): void
+    {
+        Http::fake(function () {
+            throw new ConnectionException('Connection timed out');
+        });
 
         $user = User::factory()->create();
 

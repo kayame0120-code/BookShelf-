@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Book;
 use App\Models\Genre;
+use App\Models\Review;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -78,6 +79,31 @@ class BookSearchTest extends TestCase
         $this->get('/books?sort=newest')
             ->assertOk()
             ->assertSeeInOrder(['ZZZ Book', 'MMM Book', 'AAA Book']);
+    }
+
+    /** D-3補: sort=oldest は作成の古い順で返る */
+    public function test_sort_oldest_returns_ascending_by_created_at(): void
+    {
+        $this->makeBook(['title' => '一番古い本', 'created_at' => now()->subDays(3)]);
+        $this->makeBook(['title' => '中間の本', 'created_at' => now()->subDays(2)]);
+        $this->makeBook(['title' => '一番新しい本', 'created_at' => now()->subDay()]);
+
+        $this->get('/books?sort=oldest')
+            ->assertOk()
+            ->assertSeeInOrder(['一番古い本', '中間の本', '一番新しい本']);
+    }
+
+    /** D-3補: sort=rating は平均評価の高い順で返る */
+    public function test_sort_rating_returns_by_average_rating_desc(): void
+    {
+        $high = $this->makeBook(['title' => '高評価ソート本']);
+        Review::factory()->create(['book_id' => $high->id, 'rating' => 5]);
+        $low = $this->makeBook(['title' => '低評価ソート本']);
+        Review::factory()->create(['book_id' => $low->id, 'rating' => 1]);
+
+        $this->get('/books?sort=rating')
+            ->assertOk()
+            ->assertSeeInOrder(['高評価ソート本', '低評価ソート本']);
     }
 
     /** D-4: 検索条件を維持したままページ送りできる（withQueryStringで条件保持） */
