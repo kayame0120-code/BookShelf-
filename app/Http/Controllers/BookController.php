@@ -86,12 +86,29 @@ class BookController extends Controller
 
         $volumeInfo = $response->json('items.0.volumeInfo', []);
 
+        $rawDate = $volumeInfo['publishedDate'] ?? '';
+
+        if (preg_match('/^\d{4}$/', $rawDate)) {
+            $publishedDate = $rawDate.'-01-01';
+            $publishedDatePadded = true;
+        } elseif (preg_match('/^\d{4}-\d{2}$/', $rawDate)) {
+            $publishedDate = $rawDate.'-01';
+            $publishedDatePadded = true;
+        } elseif (preg_match('/^\d{4}-\d{2}-\d{2}$/', $rawDate)) {
+            $publishedDate = $rawDate;
+            $publishedDatePadded = false;
+        } else {
+            $publishedDate = '';
+            $publishedDatePadded = false;
+        }
+
         return response()->json([
             'title' => $volumeInfo['title'] ?? '',
             'author' => implode('、', $volumeInfo['authors'] ?? []),
             'description' => $volumeInfo['description'] ?? '',
             'image_url' => $volumeInfo['imageLinks']['thumbnail'] ?? '',
-            'published_date' => $volumeInfo['publishedDate'] ?? '',
+            'published_date' => $publishedDate,
+            'published_date_padded' => $publishedDatePadded,
         ]);
     }
 

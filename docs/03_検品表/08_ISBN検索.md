@@ -10,7 +10,7 @@ status: draft
 
 - 実装を行ったCCセッションとは別の、文脈ゼロの新規セッションで証拠を収集する。
 - 渡してよいのは①`CLAUDE.md`（自動読込） ②本検品表と対の発注書 ③実装済みコードの3点のみ。
-- CCは各行に対応する生の実行結果（コマンド出力・DB確認結果・実機で見た文字列等）のみを記入する。判定・評価語は一切書かない。
+- CCは各行に対応する生の実行結果（コマンド出力・DB確認結果・レスポンスJSONの内容・実機で見た文字列）のみを記入する。判定・評価語は一切書かない。
 - 判定（YES/NO）はこのチャットが証拠ファイルと本表を突き合わせて行う。1行でもNOがあれば走行⑧は不合格。
 
 ## 証拠収集前に一度だけ実行するコマンド（出力を証拠ファイルに貼る）
@@ -27,13 +27,20 @@ sail artisan route:list --path=books
 
 ---
 
-## A. ISBN検索・正常系（実機で本物のGoogle Books APIへ通信して確認する）
+## A. ISBN検索・正常系
 
 | No. | 判定条件（YES/NO） | 確認方法 | 違反時処置 |
 |---|---|---|---|
 | A-1 | 実在する13桁ISBN（例: `9784873115658`「リーダブルコード」）を書籍登録画面のISBN欄に入力し「ISBN検索」を押すと、タイトル・著者・出版日・説明・画像が自動入力される | 実機 | 差し戻し |
-| A-2 | 上記A-1のレスポンスJSONが`title`・`author`・`description`・`image_url`・`published_date`の5キーを持つ | ブラウザの開発者ツールでレスポンスボディを確認 | 差し戻し |
+| A-2 | 上記A-1のレスポンスJSONが`title`・`author`・`description`・`image_url`・`published_date`・`published_date_padded`の6キーを持つ | ブラウザの開発者ツールでレスポンスボディを確認 | 差し戻し |
 | A-3 | 著者が複数いる書籍で、`author`が「、」区切りの1つの文字列として返る | 実機（複数著者の書籍で確認） | 差し戻し |
+| A-4 | `publishedDate`が年のみ（例:`"2012"`）の場合、`published_date`が`"2012-01-01"`、`published_date_padded`が`true`で返る | ソース確認（`BookController::searchByIsbn`の正規表現分岐に`$rawDate = "2012"`を代入した場合の戻り値を手動でトレースする） | 差し戻し |
+| A-5 | `publishedDate`が年月のみ（例:`"2012-06"`）の場合、`published_date`が`"2012-06-01"`、`published_date_padded`が`true`で返る | ソース確認（同上、`$rawDate = "2012-06"`でトレース） | 差し戻し |
+| A-6 | `publishedDate`が完全な日付（例:`"2012-06-15"`）の場合、`published_date`が`"2012-06-15"`のまま、`published_date_padded`が`false`で返る | ソース確認（同上、`$rawDate = "2012-06-15"`でトレース） | 差し戻し |
+| A-7 | `publishedDate`キー自体が存在しない、または上記いずれの形式にも一致しない場合、`published_date`が空文字、`published_date_padded`が`false`で返る | ソース確認（同上、`$rawDate = ''`でトレース） | 差し戻し |
+| A-8 | `published_date_padded`が`true`のレスポンスを受け取った場合、フロントJSが出版日欄に値を代入し、「出版日は年月までの情報のため、日付は仮の値（1日）を自動設定しました。正しい日付が分かる場合は修正してください。」というメッセージを表示する | ソース確認（`create.blade.php`・`edit.blade.php`のJS分岐） | 差し戻し |
+| A-9 | `published_date_padded`が`false`かつ`published_date`に値がある場合、フロントJSが出版日欄に値を代入し、「書籍情報を自動入力しました」という通常メッセージを表示する | ソース確認（同上） | 差し戻し |
+| A-10 | フロントJSから、出版日欄への値代入を完全なYYYY-MM-DD形式のみに限定していた正規表現ガード（`/^\d{4}-\d{2}-\d{2}$/`）が撤去されている | ソース確認（`create.blade.php`・`edit.blade.php`を目視し、出版日欄の代入が無条件の`setValue`呼び出しになっていること） | 差し戻し |
 
 ## B. エラー系・実装方式
 
@@ -69,5 +76,5 @@ sail artisan route:list --path=books
 | D-2 | ISBN検索・nullable化以外の書籍CRUD機能（登録・編集・削除・復元・認可）の既存挙動に変化がない | 実機（走行②時点の主要操作を一通り再確認） | 差し戻し |
 | D-3 | 発注書に明記されていない独自ロジックが追加されていない | ソース確認・実機 | 差し戻し |
 | D-4 | migrationの変更が`isbn`・`published_date`のnullable化のみに限定されている | `git diff main -- database/migrations/` | 差し戻し |
-| D-5 | `resources/`配下が変更されていない | `git diff main -- resources/` | 差し戻し |
+| D-5 | `resources/`配下の変更が、発注書08 §5で明示した`create.blade.php`・`edit.blade.php`のISBN検索自動入力ロジック（出版日欄への値代入・メッセージ分岐）に限定されている（それ以外の差分がない） | `git diff main -- resources/` の出力を目視し、差分が§5で明示した範囲のみであることを確認 | 差し戻し |
 | D-6 | `QUESTIONS.md` に走行⑧由来の未解消行がない、または全て記録されている | `QUESTIONS.md` 確認 | 差し戻し |

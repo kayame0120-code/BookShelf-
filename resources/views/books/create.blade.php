@@ -80,11 +80,14 @@
                         setValue('author', data.author);
                         setValue('description', data.description);
                         setValue('image_url', data.image_url);
-                        if (/^\d{4}-\d{2}-\d{2}$/.test(data.published_date ?? '')) {
-                            setValue('published_date', data.published_date);
-                        }
+                        setValue('published_date', data.published_date);
                         document.getElementById('isbn').value = isbn;
-                        showMessage('書籍情報を自動入力しました', false);
+
+                        if (data.published_date_padded) {
+                            showMessage('出版日は年月までの情報のため、日付は仮の値（1日）を自動設定しました。正しい日付が分かる場合は修正してください。', false);
+                        } else {
+                            showMessage('書籍情報を自動入力しました', false);
+                        }
                     } catch (e) {
                         showMessage('書籍情報の取得に失敗しました', true);
                     }
