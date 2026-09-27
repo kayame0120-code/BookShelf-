@@ -230,6 +230,32 @@ class ReadingPlanTest extends TestCase
         $this->actingAs($user)->post("/reading-plans/{$plan->id}/complete")->assertForbidden();
     }
 
+    // ============ 完了済み計画は編集不可（要件シート シート10 R29・本人でも403） ============
+
+    /** R29: 本人でも完了済み計画のedit（GET）は403（URL直打ち防御・所有者チェックとは分離） */
+    public function test_edit_on_completed_plan_forbidden_even_for_owner(): void
+    {
+        $user = User::factory()->create();
+        $plan = $this->makePlan($user, Book::factory()->create(), ReadingPlanStatus::Completed, now()->subDays(1)->toDateString(), now()->toDateTimeString());
+
+        $this->actingAs($user)->get("/reading-plans/{$plan->id}/edit")->assertForbidden();
+    }
+
+    /** R29: 本人でも完了済み計画のupdate（PUT）は403で、値も変わらない */
+    public function test_update_on_completed_plan_forbidden_even_for_owner(): void
+    {
+        $user = User::factory()->create();
+        $originalDate = now()->subDays(1)->toDateString();
+        $plan = $this->makePlan($user, Book::factory()->create(), ReadingPlanStatus::Completed, $originalDate, now()->toDateTimeString());
+
+        $this->actingAs($user)->put("/reading-plans/{$plan->id}", ['target_date' => now()->addDays(9)->toDateString()])
+            ->assertForbidden();
+
+        $fresh = $plan->fresh();
+        $this->assertSame($originalDate, $fresh->target_date->toDateString());
+        $this->assertSame(ReadingPlanStatus::Completed, $fresh->status);
+    }
+
     // ================= 画面表示・状態絞り込み（差し戻し 4：index/create/editの未通過分岐） =================
 
     /** index：status無指定は自分の計画を全件表示する（filled=falseの分岐） */
