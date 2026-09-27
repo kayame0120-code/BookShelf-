@@ -39,7 +39,7 @@
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                     <div class="p-6">
                         <h3 class="text-lg font-semibold text-gray-900 mb-4">評価分布</h3>
-                        <div class="space-y-3">
+                        <div class="space-y-2">
                             @foreach ($stats['rating_distribution'] as $index => $count)
                                 @php
                                     $rating = $index + 1;
@@ -51,8 +51,8 @@
                                         <span class="text-yellow-500">{{ str_repeat('★', $rating) }}</span>
                                     </div>
                                     <div class="flex-1 mx-3">
-                                        <div class="bg-gray-200 rounded-full h-5 overflow-hidden">
-                                            <div class="bg-yellow-400 h-5 rounded-full transition-all duration-300" style="width: {{ $percentage }}%"></div>
+                                        <div class="bg-gray-200 rounded-full h-2 overflow-hidden">
+                                            <div class="bg-yellow-400 h-2 rounded-full transition-all duration-300" style="width: {{ $percentage }}%"></div>
                                         </div>
                                     </div>
                                     <div class="w-12 text-sm text-gray-600 text-right font-medium">{{ $count }}件</div>
