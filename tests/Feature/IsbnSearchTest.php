@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 /**
@@ -161,5 +162,68 @@ class IsbnSearchTest extends TestCase
         $this->actingAs($user)->getJson('/books/isbn/9784000000001')->assertOk();
 
         Http::assertSent(fn ($request) => ! str_contains($request->url(), 'key='));
+    }
+
+    /**
+     * 発注書95: 指定した publishedDate（null はキー自体を入れない）で Google Books をモックし、
+     * ログイン状態で ISBN 検索を呼んだ応答を返す。
+     */
+    private function searchWithPublishedDate(?string $publishedDate): TestResponse
+    {
+        $volumeInfo = ['title' => 'T', 'authors' => ['A']];
+        if ($publishedDate !== null) {
+            $volumeInfo['publishedDate'] = $publishedDate;
+        }
+
+        Http::fake([
+            'www.googleapis.com/*' => Http::response([
+                'totalItems' => 1,
+                'items' => [['volumeInfo' => $volumeInfo]],
+            ], 200),
+        ]);
+
+        $user = User::factory()->create();
+
+        return $this->actingAs($user)->getJson('/books/isbn/9784873115658');
+    }
+
+    /** 発注書95: 年のみは1月1日で補完する */
+    public function test_published_date_year_only_is_padded_to_january_first(): void
+    {
+        $this->searchWithPublishedDate('2012')
+            ->assertOk()
+            ->assertJson(['published_date' => '2012-01-01', 'published_date_padded' => true]);
+    }
+
+    /** 発注書95: 年月のみは1日で補完する */
+    public function test_published_date_year_month_is_padded_to_first_day(): void
+    {
+        $this->searchWithPublishedDate('2012-06')
+            ->assertOk()
+            ->assertJson(['published_date' => '2012-06-01', 'published_date_padded' => true]);
+    }
+
+    /** 発注書95: 年月日はそのまま返す */
+    public function test_published_date_full_date_is_returned_as_is(): void
+    {
+        $this->searchWithPublishedDate('2012-06-23')
+            ->assertOk()
+            ->assertJson(['published_date' => '2012-06-23', 'published_date_padded' => false]);
+    }
+
+    /** 発注書95: 出版日が無い場合は空文字を返す */
+    public function test_published_date_missing_returns_empty(): void
+    {
+        $this->searchWithPublishedDate(null)
+            ->assertOk()
+            ->assertJson(['published_date' => '', 'published_date_padded' => false]);
+    }
+
+    /** 発注書95: 想定外の形式は空文字を返す */
+    public function test_published_date_unknown_format_returns_empty(): void
+    {
+        $this->searchWithPublishedDate('June 2012')
+            ->assertOk()
+            ->assertJson(['published_date' => '', 'published_date_padded' => false]);
     }
 }

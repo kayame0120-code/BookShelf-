@@ -65,7 +65,7 @@
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                 <div class="p-6 text-gray-900">
                     @if($books->isEmpty())
-                        <p class="text-gray-500">書籍が登録されていません。</p>
+                        <p class="text-gray-500">書籍が見つかりませんでした。</p>
                     @else
                         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             @foreach($books as $book)

@@ -247,4 +247,26 @@ class BookCrudTest extends TestCase
         $this->actingAs($owner)->patch(route('books.restore', $book))->assertForbidden();
         $this->assertNull($book->fresh()->deleted_at);
     }
+
+    /** 発注書95: 編集画面の出版日入力欄は時刻を含まない Y-m-d 形式で表示する */
+    public function test_edit_form_shows_published_date_in_date_input_format(): void
+    {
+        $owner = User::factory()->create();
+        $book = Book::factory()->create(['user_id' => $owner->id, 'published_date' => '2012-06-23']);
+
+        $this->actingAs($owner)->get(route('books.edit', $book))
+            ->assertOk()
+            ->assertSee('value="2012-06-23"', false)
+            ->assertDontSee('2012-06-23 00:00:00', false);
+    }
+
+    /** 発注書95: 検索結果が0件のとき「書籍が見つかりませんでした。」を表示する */
+    public function test_index_shows_not_found_message_when_search_has_no_result(): void
+    {
+        Book::factory()->create();
+
+        $this->get('/books?keyword=zzzzqqqq')
+            ->assertOk()
+            ->assertSee('書籍が見つかりませんでした。');
+    }
 }
