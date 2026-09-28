@@ -212,9 +212,20 @@ exec $SHELL
 
 ブラウザで <http://localhost> を開き、書籍一覧が表示されれば完了です。
 
+ほかのページ（例: Apache2 の初期ページ）が表示される、または何も表示されない場合は、ポート80を別のソフトが使っています。下の「補足」のポート変更を行ってください。
+
 ### 補足
 
-- **ポートが競合する場合**: `.env` に `APP_PORT=8022` のように書くと、アプリの公開ポートを変えられます。変えた場合のURLは `http://localhost:8022` になります。
+- **ポートが競合する場合**: ポート80を別のソフトが使っていると、`http://localhost` に BookShelf は表示されません。`.env` の `APP_PORT` と `APP_URL` を書き換え、コンテナを作り直してください。以降のURLは `http://localhost:8022` になります。
+
+  ```bash
+  sed -i 's/^APP_PORT=.*/APP_PORT=8022/' .env
+  sed -i 's|^APP_URL=.*|APP_URL=http://localhost:8022|' .env
+  ./vendor/bin/sail down
+  ./vendor/bin/sail up -d
+  ```
+
+  `sail npm run dev` を起動していた場合は、いったん止めて（`Ctrl+C`）、もう一度実行してください。
 - **ISBN検索のAPIキー（任意）**: `.env` の `GOOGLE_BOOKS_API_KEY` に Google Books API のキーを設定すると、ISBN検索にキーが付きます。未設定のままでも動作しますが、Google側の回数制限（429）にかかりやすくなります。
 - **Apple Silicon（M1/M2/M3）で `no matching manifest for linux/arm64/v8` が出る場合**: `compose.yaml` の `mysql` サービスに `platform: 'linux/amd64'` を追加してください。
 - **日本語化**: `lang/ja/` に手動で配置したメッセージファイルを使っています（`laravel-lang/*` 系パッケージは使用していません）。
