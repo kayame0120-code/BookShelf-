@@ -12,8 +12,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        // 基本段階では personal_access_tokens テーブルを作成しない。
-        // Sanctum のパッケージ内マイグレーション自動登録を停止し、応用段階（走行⑩）で後付けする。
         Sanctum::ignoreMigrations();
     }
 

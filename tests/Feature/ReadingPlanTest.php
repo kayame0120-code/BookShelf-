@@ -256,8 +256,6 @@ class ReadingPlanTest extends TestCase
         $this->assertSame(ReadingPlanStatus::Completed, $fresh->status);
     }
 
-    // ================= 画面表示・状態絞り込み（差し戻し 4：index/create/editの未通過分岐） =================
-
     /** index：status無指定は自分の計画を全件表示する（filled=falseの分岐） */
     public function test_index_without_status_shows_all_own_plans(): void
     {
