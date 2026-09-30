@@ -1,0 +1,762 @@
+diff -ruN /tmp/mock-advanced/resources/views/auth/login.blade.php resources/views/auth/login.blade.php
+--- /tmp/mock-advanced/resources/views/auth/login.blade.php	2026-09-28 09:54:24.423042308 +0900
++++ resources/views/auth/login.blade.php	2026-09-03 16:31:09.089404877 +0900
+@@ -16,12 +16,7 @@
+         </div>
+ 
+         <div class="flex items-center justify-end mt-4">
+-            <a href="{{ route('register') }}"
+-                class="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-md font-semibold text-xs text-gray-700 uppercase tracking-widest shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+-                {{ __('会員登録') }}
+-            </a>
+-
+-            <x-primary-button class="ml-3">
++            <x-primary-button>
+                 {{ __('ログイン') }}
+             </x-primary-button>
+         </div>
+diff -ruN /tmp/mock-advanced/resources/views/auth/register.blade.php resources/views/auth/register.blade.php
+--- /tmp/mock-advanced/resources/views/auth/register.blade.php	2026-09-28 09:54:24.423042308 +0900
++++ resources/views/auth/register.blade.php	2026-09-03 16:31:09.089404877 +0900
+@@ -31,9 +31,8 @@
+         </div>
+ 
+         <div class="flex items-center justify-end mt-4">
+-            <a href="{{ route('login') }}"
+-                class="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-md font-semibold text-xs text-gray-700 uppercase tracking-widest shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+-                {{ __('ログイン') }}
++            <a href="{{ route('login') }}" class="text-sm text-gray-600 underline hover:text-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
++                {{ __('アカウントをお持ちの方') }}
+             </a>
+ 
+             <x-primary-button class="ml-4">
+diff -ruN /tmp/mock-advanced/resources/views/books/create.blade.php resources/views/books/create.blade.php
+--- /tmp/mock-advanced/resources/views/books/create.blade.php	2026-09-28 09:54:24.427042020 +0900
++++ resources/views/books/create.blade.php	2026-09-27 09:59:58.108837844 +0900
+@@ -7,32 +7,23 @@
+ 
+     <div class="py-12">
+         <div class="max-w-2xl mx-auto sm:px-6 lg:px-8">
+-            <!-- ISBN検索 -->
+-            <div class="bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-100 shadow-sm sm:rounded-lg mb-6">
+-                <div class="p-6">
+-                    <div class="flex items-center gap-2 mb-3">
+-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+-                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+-                        </svg>
+-                        <h3 class="font-semibold text-base text-gray-800">ISBN から書籍情報を自動入力</h3>
+-                    </div>
+-                    <p class="text-xs text-gray-600 mb-3">13桁の ISBN を入力すると、Google Books API から書籍情報を取得してフォームを自動補完します。</p>
+-                    <div class="flex items-stretch gap-2 w-full">
+-                        <input type="text" id="isbn-search" placeholder="例: 9784101010014" class="w-full flex-1 min-w-0 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm" inputmode="numeric">
+-                        <button type="button" id="fetch-btn" class="shrink-0 inline-flex items-center gap-1 bg-blue-500 hover:bg-blue-700 disabled:bg-blue-300 text-white text-sm font-bold py-2 px-4 rounded shadow-sm transition whitespace-nowrap">
+-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+-                                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M10 18a8 8 0 100-16 8 8 0 000 16z" />
+-                            </svg>
+-                            <span id="fetch-btn-label">検索</span>
+-                        </button>
+-                    </div>
+-                    <p id="fetch-error" class="mt-2 text-sm text-red-600 hidden"></p>
+-                    <p id="fetch-success" class="mt-2 text-sm text-green-600 hidden"></p>
+-                </div>
+-            </div>
+-
+             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                 <div class="p-6 text-gray-900">
++                    <div class="bg-indigo-50 border border-indigo-100 rounded-lg p-4 mb-6">
++                        <h3 class="font-medium text-gray-800 mb-1">📖 ISBN から書籍情報を自動入力</h3>
++                        <p class="text-sm text-gray-600 mb-3">13桁の ISBN を入力すると、Google Books API から書籍情報を取得してフォームを自動補完します。</p>
++                        <div class="flex gap-2">
++                            <input type="text" id="isbn_search" value=""
++                                class="border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm block w-full"
++                                placeholder="例: 9784101010014">
++                            <button type="button" id="isbn_search_button"
++                                class="shrink-0 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded whitespace-nowrap">
++                                🔍 検索
++                            </button>
++                        </div>
++                        <p id="isbn_search_message" class="text-sm mt-2 hidden"></p>
++                    </div>
++
+                     <form action="{{ route('books.store') }}" method="POST" novalidate>
+                         @include('books._form')
+ 
+@@ -51,61 +42,57 @@
+     </div>
+ 
+     @push('scripts')
+-    <script>
+-        document.getElementById('fetch-btn').addEventListener('click', async function() {
+-            const isbn = document.getElementById('isbn-search').value.trim();
+-            const errorEl = document.getElementById('fetch-error');
+-            const successEl = document.getElementById('fetch-success');
+-            const labelEl = document.getElementById('fetch-btn-label');
+-
+-            errorEl.classList.add('hidden');
+-            successEl.classList.add('hidden');
+-
+-            if (isbn.length !== 13) {
+-                errorEl.textContent = 'ISBNは13桁で入力してください。';
+-                errorEl.classList.remove('hidden');
+-                return;
+-            }
+-
+-            this.disabled = true;
+-            labelEl.textContent = '検索中...';
+-
+-            try {
+-                const response = await fetch(`/books/isbn/${isbn}`, {
+-                    headers: {
+-                        'Accept': 'application/json',
+-                    },
+-                });
+-                const data = await response.json();
++        <script>
++            document.addEventListener('DOMContentLoaded', function () {
++                const button = document.getElementById('isbn_search_button');
++                const input = document.getElementById('isbn_search');
++                const message = document.getElementById('isbn_search_message');
++
++                const showMessage = function (text, isError) {
++                    message.textContent = text;
++                    message.classList.remove('hidden', 'text-red-600', 'text-green-600');
++                    message.classList.add(isError ? 'text-red-600' : 'text-green-600');
++                };
++
++                const setValue = function (id, value) {
++                    const field = document.getElementById(id);
++                    if (field && value) {
++                        field.value = value;
++                    }
++                };
+ 
+-                if (data.error) {
+-                    errorEl.textContent = data.error;
+-                    errorEl.classList.remove('hidden');
+-                } else {
+-                    document.getElementById('title').value = data.title || '';
+-                    document.getElementById('author').value = data.author || '';
+-                    document.getElementById('isbn').value = isbn;
+-                    document.getElementById('description').value = data.description || '';
+-                    document.getElementById('image_url').value = data.image_url || '';
+-
+-                    if (data.published_date) {
+-                        const date = new Date(data.published_date);
+-                        if (!isNaN(date)) {
+-                            document.getElementById('published_date').value = date.toISOString().split('T')[0];
++                button.addEventListener('click', async function () {
++                    const isbn = input.value.trim();
++                    message.classList.add('hidden');
++
++                    try {
++                        const response = await fetch(`/books/isbn/${encodeURIComponent(isbn)}`, {
++                            headers: { 'Accept': 'application/json' },
++                        });
++                        const data = await response.json();
++
++                        if (!response.ok) {
++                            showMessage(data.message ?? '書籍情報の取得に失敗しました', true);
++                            return;
+                         }
+-                    }
+ 
+-                    successEl.textContent = '書籍情報を取得しました。';
+-                    successEl.classList.remove('hidden');
+-                }
+-            } catch (e) {
+-                errorEl.textContent = '通信エラーが発生しました。';
+-                errorEl.classList.remove('hidden');
+-            } finally {
+-                this.disabled = false;
+-                labelEl.textContent = '検索';
+-            }
+-        });
+-    </script>
++                        setValue('title', data.title);
++                        setValue('author', data.author);
++                        setValue('description', data.description);
++                        setValue('image_url', data.image_url);
++                        setValue('published_date', data.published_date);
++                        document.getElementById('isbn').value = isbn;
++
++                        if (data.published_date_padded) {
++                            showMessage('出版日は年月までの情報のため、日付は仮の値（1日）を自動設定しました。正しい日付が分かる場合は修正してください。', false);
++                        } else {
++                            showMessage('書籍情報を自動入力しました', false);
++                        }
++                    } catch (e) {
++                        showMessage('書籍情報の取得に失敗しました', true);
++                    }
++                });
++            });
++        </script>
+     @endpush
+ </x-app-layout>
+diff -ruN /tmp/mock-advanced/resources/views/books/edit.blade.php resources/views/books/edit.blade.php
+--- /tmp/mock-advanced/resources/views/books/edit.blade.php	2026-09-28 09:54:24.427042020 +0900
++++ resources/views/books/edit.blade.php	2026-09-15 16:41:14.681248167 +0900
+@@ -7,30 +7,6 @@
+ 
+     <div class="py-12">
+         <div class="max-w-2xl mx-auto sm:px-6 lg:px-8">
+-            <!-- ISBN検索 -->
+-            <div class="bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-100 shadow-sm sm:rounded-lg mb-6">
+-                <div class="p-6">
+-                    <div class="flex items-center gap-2 mb-3">
+-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+-                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+-                        </svg>
+-                        <h3 class="font-semibold text-base text-gray-800">ISBN から書籍情報を自動入力</h3>
+-                    </div>
+-                    <p class="text-xs text-gray-600 mb-3">13桁の ISBN を入力すると、Google Books API から書籍情報を取得してフォームを自動補完します。</p>
+-                    <div class="flex items-stretch gap-2 w-full">
+-                        <input type="text" id="isbn-search" placeholder="例: 9784101010014" class="w-full flex-1 min-w-0 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm" inputmode="numeric">
+-                        <button type="button" id="fetch-btn" class="shrink-0 inline-flex items-center gap-1 bg-blue-500 hover:bg-blue-700 disabled:bg-blue-300 text-white text-sm font-bold py-2 px-4 rounded shadow-sm transition whitespace-nowrap">
+-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+-                                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M10 18a8 8 0 100-16 8 8 0 000 16z" />
+-                            </svg>
+-                            <span id="fetch-btn-label">検索</span>
+-                        </button>
+-                    </div>
+-                    <p id="fetch-error" class="mt-2 text-sm text-red-600 hidden"></p>
+-                    <p id="fetch-success" class="mt-2 text-sm text-green-600 hidden"></p>
+-                </div>
+-            </div>
+-
+             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                 <div class="p-6 text-gray-900">
+                     <form action="{{ route('books.update', $book) }}" method="POST" novalidate>
+@@ -50,63 +26,4 @@
+             </div>
+         </div>
+     </div>
+-
+-    @push('scripts')
+-    <script>
+-        document.getElementById('fetch-btn').addEventListener('click', async function() {
+-            const isbn = document.getElementById('isbn-search').value.trim();
+-            const errorEl = document.getElementById('fetch-error');
+-            const successEl = document.getElementById('fetch-success');
+-            const labelEl = document.getElementById('fetch-btn-label');
+-
+-            errorEl.classList.add('hidden');
+-            successEl.classList.add('hidden');
+-
+-            if (isbn.length !== 13) {
+-                errorEl.textContent = 'ISBNは13桁で入力してください。';
+-                errorEl.classList.remove('hidden');
+-                return;
+-            }
+-
+-            this.disabled = true;
+-            labelEl.textContent = '検索中...';
+-
+-            try {
+-                const response = await fetch(`/books/isbn/${isbn}`, {
+-                    headers: {
+-                        'Accept': 'application/json',
+-                    },
+-                });
+-                const data = await response.json();
+-
+-                if (data.error) {
+-                    errorEl.textContent = data.error;
+-                    errorEl.classList.remove('hidden');
+-                } else {
+-                    document.getElementById('title').value = data.title || '';
+-                    document.getElementById('author').value = data.author || '';
+-                    document.getElementById('isbn').value = isbn;
+-                    document.getElementById('description').value = data.description || '';
+-                    document.getElementById('image_url').value = data.image_url || '';
+-
+-                    if (data.published_date) {
+-                        const date = new Date(data.published_date);
+-                        if (!isNaN(date)) {
+-                            document.getElementById('published_date').value = date.toISOString().split('T')[0];
+-                        }
+-                    }
+-
+-                    successEl.textContent = '書籍情報を取得しました。';
+-                    successEl.classList.remove('hidden');
+-                }
+-            } catch (e) {
+-                errorEl.textContent = '通信エラーが発生しました。';
+-                errorEl.classList.remove('hidden');
+-            } finally {
+-                this.disabled = false;
+-                labelEl.textContent = '検索';
+-            }
+-        });
+-    </script>
+-    @endpush
+ </x-app-layout>
+diff -ruN /tmp/mock-advanced/resources/views/books/_form.blade.php resources/views/books/_form.blade.php
+--- /tmp/mock-advanced/resources/views/books/_form.blade.php	2026-09-28 09:54:24.427042020 +0900
++++ resources/views/books/_form.blade.php	2026-09-17 12:46:35.386234655 +0900
+@@ -49,7 +49,7 @@
+         <label for="published_date" class="block font-medium text-sm text-gray-700 mb-1">
+             出版日
+         </label>
+-        <input type="date" name="published_date" id="published_date" value="{{ old('published_date', isset($book->published_date) ? $book->published_date->format('Y-m-d') : '') }}"
++        <input type="date" name="published_date" id="published_date" value="{{ old('published_date', $book->published_date ?? '') }}"
+             class="border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm block w-full">
+         @error('published_date')
+             <p class="text-sm text-red-600 mt-1">{{ $message }}</p>
+diff -ruN /tmp/mock-advanced/resources/views/books/index.blade.php resources/views/books/index.blade.php
+--- /tmp/mock-advanced/resources/views/books/index.blade.php	2026-09-28 09:54:24.427042020 +0900
++++ resources/views/books/index.blade.php	2026-09-17 12:46:04.388958371 +0900
+@@ -7,50 +7,40 @@
+ 
+     <div class="py-12">
+         <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+-            @if(session('success'))
+-                <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
+-                    {{ session('success') }}
+-                </div>
+-            @endif
+-
+-            @if(session('error'))
+-                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+-                    {{ session('error') }}
+-                </div>
+-            @endif
+-
+-            <!-- 検索フォーム -->
+             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg mb-6">
+-                <div class="p-6 text-gray-900">
+-                    <form action="{{ route('books.index') }}" method="GET" class="space-y-4" novalidate>
++                <div class="p-6">
++                    <form method="GET" action="{{ route('books.index') }}">
+                         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                             <div>
+                                 <label for="keyword" class="block text-sm font-medium text-gray-700 mb-1">キーワード</label>
+-                                <input type="text" name="keyword" id="keyword" value="{{ request('keyword') }}" class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="タイトル・著者で検索">
++                                <input type="text" name="keyword" id="keyword" value="{{ request('keyword') }}"
++                                    class="border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm block w-full"
++                                    placeholder="タイトル・著者で検索">
+                             </div>
+                             <div>
+                                 <label for="genre" class="block text-sm font-medium text-gray-700 mb-1">ジャンル</label>
+-                                <select name="genre" id="genre" class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
++                                <select name="genre" id="genre"
++                                    class="border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm block w-full">
+                                     <option value="">すべて</option>
+-                                    @foreach($genres ?? [] as $genre)
+-                                        <option value="{{ $genre->id }}" {{ request('genre') == $genre->id ? 'selected' : '' }}>
+-                                            {{ $genre->name }}
+-                                        </option>
++                                    @foreach($genres as $genre)
++                                        <option value="{{ $genre->id }}" @selected((int) request('genre') === $genre->id)>{{ $genre->name }}</option>
+                                     @endforeach
+                                 </select>
+                             </div>
+                             <div>
+                                 <label for="sort" class="block text-sm font-medium text-gray-700 mb-1">並び順</label>
+-                                <select name="sort" id="sort" class="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+-                                    <option value="newest" {{ request('sort') == 'newest' ? 'selected' : '' }}>新しい順</option>
+-                                    <option value="oldest" {{ request('sort') == 'oldest' ? 'selected' : '' }}>古い順</option>
+-                                    <option value="rating" {{ request('sort') == 'rating' ? 'selected' : '' }}>評価順</option>
+-                                    <option value="title" {{ request('sort') == 'title' ? 'selected' : '' }}>タイトル順</option>
++                                <select name="sort" id="sort"
++                                    class="border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm block w-full">
++                                    <option value="newest" @selected(request('sort', 'newest') === 'newest')>新しい順</option>
++                                    <option value="oldest" @selected(request('sort') === 'oldest')>古い順</option>
++                                    <option value="title" @selected(request('sort') === 'title')>タイトル順</option>
++                                    <option value="rating" @selected(request('sort') === 'rating')>評価が高い順</option>
+                                 </select>
+                             </div>
+                         </div>
+-                        <div class="flex items-center justify-between">
+-                            <div class="flex items-center gap-4">
++
++                        <div class="flex items-center justify-between mt-4">
++                            <div class="flex items-center gap-3">
+                                 <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                                     検索
+                                 </button>
+@@ -66,16 +56,16 @@
+                 </div>
+             </div>
+ 
+-            @if(request('keyword') || request('genre'))
+-                <div class="mb-4 text-gray-600">
+-                    検索結果: {{ $books->total() }}件
++            @if(session('success'))
++                <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
++                    {{ session('success') }}
+                 </div>
+             @endif
+ 
+             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                 <div class="p-6 text-gray-900">
+                     @if($books->isEmpty())
+-                        <p class="text-gray-500">書籍が見つかりませんでした。</p>
++                        <p class="text-gray-500">書籍が登録されていません。</p>
+                     @else
+                         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                             @foreach($books as $book)
+@@ -87,31 +77,15 @@
+                                             <span class="text-gray-500">画像なし</span>
+                                         </div>
+                                     @endif
+-                                    <h3 class="font-bold text-lg mb-2 text-blue-600 hover:text-blue-800">
++                                    <h3 class="font-extrabold text-lg mb-2 text-blue-600 hover:text-blue-800">
+                                         {{ $book->title }}
+                                     </h3>
+-                                    <p class="text-gray-600 text-sm mb-2">{{ $book->author }}</p>
++                                    <p class="text-gray-600 text-sm font-medium mb-2">{{ $book->author }}</p>
+                                     <div class="flex flex-wrap gap-1 mb-2">
+                                         @foreach($book->genres as $genre)
+                                             <span class="bg-gray-200 text-gray-700 text-xs px-2 py-1 rounded">{{ $genre->name }}</span>
+                                         @endforeach
+                                     </div>
+-                                    @if($book->reviews_avg_rating)
+-                                        <div class="flex items-center">
+-                                            <span class="text-yellow-500">
+-                                                @for($i = 1; $i <= 5; $i++)
+-                                                    @if($i <= round($book->reviews_avg_rating))
+-                                                        ★
+-                                                    @else
+-                                                        ☆
+-                                                    @endif
+-                                                @endfor
+-                                            </span>
+-                                            <span class="text-sm text-gray-500 ml-2">
+-                                                ({{ number_format($book->reviews_avg_rating, 1) }})
+-                                            </span>
+-                                        </div>
+-                                    @endif
+                                 </a>
+                             @endforeach
+                         </div>
+diff -ruN /tmp/mock-advanced/resources/views/books/show.blade.php resources/views/books/show.blade.php
+--- /tmp/mock-advanced/resources/views/books/show.blade.php	2026-09-28 09:54:24.427042020 +0900
++++ resources/views/books/show.blade.php	2026-09-15 16:11:23.377207766 +0900
+@@ -12,6 +12,11 @@
+                     {{ session('success') }}
+                 </div>
+             @endif
++            @if ($book->trashed())
++                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
++                    この本は削除されました
++                </div>
++            @endif
+             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                 <div class="p-6 text-gray-900">
+                     <div class="flex flex-col md:flex-row gap-6">
+@@ -29,6 +34,7 @@
+                                 <h1 class="text-2xl font-bold">{{ $book->title }}</h1>
+ 
+                                 <!-- お気に入りボタン -->
++                                @if(! $book->trashed())
+                                 @auth
+                                     @if(Auth::user()->favoriteBooks->contains($book->id))
+                                         <form action="{{ route('favorites.toggle', $book) }}" method="POST" novalidate>
+@@ -56,6 +62,7 @@
+                                         </svg>
+                                     </a>
+                                 @endauth
++                                @endif
+                             </div>
+ 
+                             <p class="text-gray-600 mb-2"><strong>著者:</strong> {{ $book->author }}</p>
+@@ -89,6 +96,15 @@
+                                         </button>
+                                     </form>
+                                 @endcan
++                                @can('restore', $book)
++                                    <form action="{{ route('books.restore', $book) }}" method="POST" novalidate>
++                                        @csrf
++                                        @method('PATCH')
++                                        <button type="submit" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
++                                            復元する
++                                        </button>
++                                    </form>
++                                @endcan
+                             </div>
+                         </div>
+                     </div>
+@@ -97,6 +113,7 @@
+                     <div class="mt-8 pt-8 border-t border-gray-200">
+                         <h2 class="text-xl font-bold mb-4">レビュー</h2>
+ 
++                        @if(! $book->trashed())
+                         @auth
+                             <!-- レビュー投稿フォーム -->
+                             <div class="mb-6 bg-gray-50 p-4 rounded-lg">
+@@ -138,6 +155,9 @@
+                                 レビューを投稿するには<a href="{{ route('login') }}" class="text-blue-600 hover:underline">ログイン</a>してください。
+                             </p>
+                         @endauth
++                        @else
++                            <p class="mb-6 text-gray-600">削除済みの書籍にはレビューを投稿できません</p>
++                        @endif
+ 
+                         <!-- レビュー一覧 -->
+                         @if($book->reviews->count() > 0)
+diff -ruN /tmp/mock-advanced/resources/views/errors/403.blade.php resources/views/errors/403.blade.php
+--- /tmp/mock-advanced/resources/views/errors/403.blade.php	1970-01-01 09:00:00.000000000 +0900
++++ resources/views/errors/403.blade.php	2026-09-16 14:19:57.828175096 +0900
+@@ -0,0 +1,16 @@
++<!DOCTYPE html>
++<html lang="ja">
++<head>
++    <meta charset="utf-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1">
++    <title>このページにアクセスする権限がありません</title>
++    @vite(['resources/css/app.css'])
++</head>
++<body class="bg-gray-100 min-h-screen flex items-center justify-center">
++    <div class="text-center px-6">
++        <h1 class="text-2xl font-bold text-gray-800 mb-4">このページにアクセスする権限がありません</h1>
++        <p class="text-gray-600 mb-8">お探しのページを表示する権限がありません。トップページからやり直してください。</p>
++        <a href="{{ route('books.index') }}" class="inline-block px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700">トップページへ戻る</a>
++    </div>
++</body>
++</html>
+diff -ruN /tmp/mock-advanced/resources/views/errors/404.blade.php resources/views/errors/404.blade.php
+--- /tmp/mock-advanced/resources/views/errors/404.blade.php	1970-01-01 09:00:00.000000000 +0900
++++ resources/views/errors/404.blade.php	2026-09-16 14:19:57.828175096 +0900
+@@ -0,0 +1,16 @@
++<!DOCTYPE html>
++<html lang="ja">
++<head>
++    <meta charset="utf-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1">
++    <title>ページが見つかりません</title>
++    @vite(['resources/css/app.css'])
++</head>
++<body class="bg-gray-100 min-h-screen flex items-center justify-center">
++    <div class="text-center px-6">
++        <h1 class="text-2xl font-bold text-gray-800 mb-4">ページが見つかりません</h1>
++        <p class="text-gray-600 mb-8">お探しのページは存在しないか、移動または削除された可能性があります。</p>
++        <a href="{{ route('books.index') }}" class="inline-block px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700">トップページへ戻る</a>
++    </div>
++</body>
++</html>
+diff -ruN /tmp/mock-advanced/resources/views/errors/419.blade.php resources/views/errors/419.blade.php
+--- /tmp/mock-advanced/resources/views/errors/419.blade.php	1970-01-01 09:00:00.000000000 +0900
++++ resources/views/errors/419.blade.php	2026-09-16 14:19:57.828175096 +0900
+@@ -0,0 +1,16 @@
++<!DOCTYPE html>
++<html lang="ja">
++<head>
++    <meta charset="utf-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1">
++    <title>セッションの有効期限が切れました</title>
++    @vite(['resources/css/app.css'])
++</head>
++<body class="bg-gray-100 min-h-screen flex items-center justify-center">
++    <div class="text-center px-6">
++        <h1 class="text-2xl font-bold text-gray-800 mb-4">セッションの有効期限が切れました</h1>
++        <p class="text-gray-600 mb-8">お手数ですが、前の画面に戻ってもう一度お試しください。</p>
++        <a href="{{ route('books.index') }}" class="inline-block px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700">トップページへ戻る</a>
++    </div>
++</body>
++</html>
+diff -ruN /tmp/mock-advanced/resources/views/errors/500.blade.php resources/views/errors/500.blade.php
+--- /tmp/mock-advanced/resources/views/errors/500.blade.php	1970-01-01 09:00:00.000000000 +0900
++++ resources/views/errors/500.blade.php	2026-09-16 14:19:57.828175096 +0900
+@@ -0,0 +1,16 @@
++<!DOCTYPE html>
++<html lang="ja">
++<head>
++    <meta charset="utf-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1">
++    <title>エラーが発生しました</title>
++    @vite(['resources/css/app.css'])
++</head>
++<body class="bg-gray-100 min-h-screen flex items-center justify-center">
++    <div class="text-center px-6">
++        <h1 class="text-2xl font-bold text-gray-800 mb-4">エラーが発生しました</h1>
++        <p class="text-gray-600 mb-8">申し訳ありません。サーバーで問題が発生しました。時間をおいて再度お試しください。</p>
++        <a href="{{ route('books.index') }}" class="inline-block px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700">トップページへ戻る</a>
++    </div>
++</body>
++</html>
+diff -ruN /tmp/mock-advanced/resources/views/errors/503.blade.php resources/views/errors/503.blade.php
+--- /tmp/mock-advanced/resources/views/errors/503.blade.php	1970-01-01 09:00:00.000000000 +0900
++++ resources/views/errors/503.blade.php	2026-09-16 14:19:57.828175096 +0900
+@@ -0,0 +1,16 @@
++<!DOCTYPE html>
++<html lang="ja">
++<head>
++    <meta charset="utf-8">
++    <meta name="viewport" content="width=device-width, initial-scale=1">
++    <title>ただいまメンテナンス中です</title>
++    @vite(['resources/css/app.css'])
++</head>
++<body class="bg-gray-100 min-h-screen flex items-center justify-center">
++    <div class="text-center px-6">
++        <h1 class="text-2xl font-bold text-gray-800 mb-4">ただいまメンテナンス中です</h1>
++        <p class="text-gray-600 mb-8">申し訳ありません。現在メンテナンスを行っています。しばらくお待ちください。</p>
++        <a href="{{ route('books.index') }}" class="inline-block px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700">トップページへ戻る</a>
++    </div>
++</body>
++</html>
+diff -ruN /tmp/mock-advanced/resources/views/favorites/index.blade.php resources/views/favorites/index.blade.php
+--- /tmp/mock-advanced/resources/views/favorites/index.blade.php	2026-09-28 09:54:24.427042020 +0900
++++ resources/views/favorites/index.blade.php	2026-09-15 16:41:14.681248167 +0900
+@@ -12,7 +12,10 @@
+                     @if($books->count() > 0)
+                         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                             @foreach($books as $book)
+-                                <div class="border rounded-lg p-4 hover:shadow-lg transition-shadow cursor-pointer">
++                                <div class="relative border rounded-lg p-4 hover:shadow-lg transition-shadow cursor-pointer">
++                                    {{-- カード全体を詳細ページへのリンクにする（ストレッチリンク）。お気に入りボタンは前面に重ねてクリック可能にする --}}
++                                    <a href="{{ route('books.show', $book) }}" class="absolute inset-0 z-0" aria-label="{{ $book->title }} の詳細"></a>
++
+                                     @if($book->image_url)
+                                         <img src="{{ $book->image_url }}" alt="{{ $book->title }}" class="w-full h-48 object-cover rounded mb-4">
+                                     @else
+@@ -21,14 +24,12 @@
+                                         </div>
+                                     @endif
+                                     <h3 class="font-bold text-lg mb-2">
+-                                        <a href="{{ route('books.show', $book) }}" class="text-blue-600 hover:underline">
+-                                            {{ $book->title }}
+-                                        </a>
++                                        <span class="text-blue-600">{{ $book->title }}</span>
+                                     </h3>
+                                     <p class="text-gray-600 mb-2">{{ $book->author }}</p>
+                                     <div class="flex items-center justify-between">
+-                                        <span class="text-sm text-gray-500">ISBN: {{ $book->isbn ?? '未登録' }}</span>
+-                                        <form action="{{ route('favorites.toggle', $book) }}" method="POST" novalidate>
++                                        <span class="text-sm text-gray-500">ISBN: {{ $book->isbn }}</span>
++                                        <form action="{{ route('favorites.toggle', $book) }}" method="POST" novalidate class="relative z-10">
+                                             @csrf
+                                             <button type="submit" class="text-red-500 hover:text-red-700">
+                                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
+diff -ruN /tmp/mock-advanced/resources/views/reports/index.blade.php resources/views/reports/index.blade.php
+--- /tmp/mock-advanced/resources/views/reports/index.blade.php	2026-09-28 09:54:24.427042020 +0900
++++ resources/views/reports/index.blade.php	2026-09-27 10:14:25.278051368 +0900
+@@ -39,7 +39,7 @@
+                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                     <div class="p-6">
+                         <h3 class="text-lg font-semibold text-gray-900 mb-4">評価分布</h3>
+-                        <div class="space-y-3">
++                        <div class="space-y-2">
+                             @foreach ($stats['rating_distribution'] as $index => $count)
+                                 @php
+                                     $rating = $index + 1;
+@@ -51,8 +51,8 @@
+                                         <span class="text-yellow-500">{{ str_repeat('★', $rating) }}</span>
+                                     </div>
+                                     <div class="flex-1 mx-3">
+-                                        <div class="bg-gray-200 rounded-full h-5 overflow-hidden">
+-                                            <div class="bg-yellow-400 h-5 rounded-full transition-all duration-300" style="width: {{ $percentage }}%"></div>
++                                        <div class="bg-gray-200 rounded-full h-2 overflow-hidden">
++                                            <div class="bg-yellow-400 h-2 rounded-full transition-all duration-300" style="width: {{ $percentage }}%"></div>
+                                         </div>
+                                     </div>
+                                     <div class="w-12 text-sm text-gray-600 text-right font-medium">{{ $count }}件</div>
+diff -ruN /tmp/mock-advanced/resources/views/vendor/pagination/tailwind.blade.php resources/views/vendor/pagination/tailwind.blade.php
+--- /tmp/mock-advanced/resources/views/vendor/pagination/tailwind.blade.php	1970-01-01 09:00:00.000000000 +0900
++++ resources/views/vendor/pagination/tailwind.blade.php	2026-09-03 16:31:09.089404877 +0900
+@@ -0,0 +1,106 @@
++@if ($paginator->hasPages())
++    <nav role="navigation" aria-label="{{ __('Pagination Navigation') }}" class="flex items-center justify-start">
++        <div class="flex justify-between flex-1 sm:hidden">
++            @if ($paginator->onFirstPage())
++                <span class="relative inline-flex items-center px-4 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 cursor-default leading-5 rounded-md dark:text-gray-600 dark:bg-gray-800 dark:border-gray-600">
++                    {!! __('pagination.previous') !!}
++                </span>
++            @else
++                <a href="{{ $paginator->previousPageUrl() }}" class="relative inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 leading-5 rounded-md hover:text-gray-500 focus:outline-none focus:ring ring-gray-300 focus:border-blue-300 active:bg-gray-100 active:text-gray-700 transition ease-in-out duration-150 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:focus:border-blue-700 dark:active:bg-gray-700 dark:active:text-gray-300">
++                    {!! __('pagination.previous') !!}
++                </a>
++            @endif
++
++            @if ($paginator->hasMorePages())
++                <a href="{{ $paginator->nextPageUrl() }}" class="relative inline-flex items-center px-4 py-2 ml-3 text-sm font-medium text-gray-700 bg-white border border-gray-300 leading-5 rounded-md hover:text-gray-500 focus:outline-none focus:ring ring-gray-300 focus:border-blue-300 active:bg-gray-100 active:text-gray-700 transition ease-in-out duration-150 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-300 dark:focus:border-blue-700 dark:active:bg-gray-700 dark:active:text-gray-300">
++                    {!! __('pagination.next') !!}
++                </a>
++            @else
++                <span class="relative inline-flex items-center px-4 py-2 ml-3 text-sm font-medium text-gray-500 bg-white border border-gray-300 cursor-default leading-5 rounded-md dark:text-gray-600 dark:bg-gray-800 dark:border-gray-600">
++                    {!! __('pagination.next') !!}
++                </span>
++            @endif
++        </div>
++
++        <div class="hidden sm:flex sm:items-center sm:justify-start sm:gap-4">
++            <div>
++                <p class="text-sm text-gray-700 leading-5 dark:text-gray-400">
++                    {!! __('Showing') !!}
++                    @if ($paginator->firstItem())
++                        <span class="font-medium">{{ $paginator->firstItem() }}</span>
++                        {!! __('to') !!}
++                        <span class="font-medium">{{ $paginator->lastItem() }}</span>
++                    @else
++                        {{ $paginator->count() }}
++                    @endif
++                    {!! __('of') !!}
++                    <span class="font-medium">{{ $paginator->total() }}</span>
++                    {!! __('results') !!}
++                </p>
++            </div>
++
++            <div>
++                <span class="relative z-0 inline-flex rtl:flex-row-reverse shadow-sm rounded-md">
++                    {{-- Previous Page Link --}}
++                    @if ($paginator->onFirstPage())
++                        <span aria-disabled="true" aria-label="{{ __('pagination.previous') }}">
++                            <span class="relative inline-flex items-center px-2 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 cursor-default rounded-l-md leading-5 dark:bg-gray-800 dark:border-gray-600" aria-hidden="true">
++                                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
++                                    <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" />
++                                </svg>
++                            </span>
++                        </span>
++                    @else
++                        <a href="{{ $paginator->previousPageUrl() }}" rel="prev" class="relative inline-flex items-center px-2 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-l-md leading-5 hover:text-gray-400 focus:z-10 focus:outline-none focus:ring ring-gray-300 focus:border-blue-300 active:bg-gray-100 active:text-gray-500 transition ease-in-out duration-150 dark:bg-gray-800 dark:border-gray-600 dark:active:bg-gray-700 dark:focus:border-blue-800" aria-label="{{ __('pagination.previous') }}">
++                            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
++                                <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" />
++                            </svg>
++                        </a>
++                    @endif
++
++                    {{-- Pagination Elements --}}
++                    @foreach ($elements as $element)
++                        {{-- "Three Dots" Separator --}}
++                        @if (is_string($element))
++                            <span aria-disabled="true">
++                                <span class="relative inline-flex items-center px-4 py-2 -ml-px text-sm font-medium text-gray-700 bg-white border border-gray-300 cursor-default leading-5 dark:bg-gray-800 dark:border-gray-600">{{ $element }}</span>
++                            </span>
++                        @endif
++
++                        {{-- Array Of Links --}}
++                        @if (is_array($element))
++                            @foreach ($element as $page => $url)
++                                @if ($page == $paginator->currentPage())
++                                    <span aria-current="page">
++                                        <span class="relative inline-flex items-center px-4 py-2 -ml-px text-sm font-medium text-gray-500 bg-white border border-gray-300 cursor-default leading-5 dark:bg-gray-800 dark:border-gray-600">{{ $page }}</span>
++                                    </span>
++                                @else
++                                    <a href="{{ $url }}" class="relative inline-flex items-center px-4 py-2 -ml-px text-sm font-medium text-gray-700 bg-white border border-gray-300 leading-5 hover:text-gray-500 focus:z-10 focus:outline-none focus:ring ring-gray-300 focus:border-blue-300 active:bg-gray-100 active:text-gray-700 transition ease-in-out duration-150 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-400 dark:hover:text-gray-300 dark:active:bg-gray-700 dark:focus:border-blue-800" aria-label="{{ __('Go to page :page', ['page' => $page]) }}">
++                                        {{ $page }}
++                                    </a>
++                                @endif
++                            @endforeach
++                        @endif
++                    @endforeach
++
++                    {{-- Next Page Link --}}
++                    @if ($paginator->hasMorePages())
++                        <a href="{{ $paginator->nextPageUrl() }}" rel="next" class="relative inline-flex items-center px-2 py-2 -ml-px text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-r-md leading-5 hover:text-gray-400 focus:z-10 focus:outline-none focus:ring ring-gray-300 focus:border-blue-300 active:bg-gray-100 active:text-gray-500 transition ease-in-out duration-150 dark:bg-gray-800 dark:border-gray-600 dark:active:bg-gray-700 dark:focus:border-blue-800" aria-label="{{ __('pagination.next') }}">
++                            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
++                                <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
++                            </svg>
++                        </a>
++                    @else
++                        <span aria-disabled="true" aria-label="{{ __('pagination.next') }}">
++                            <span class="relative inline-flex items-center px-2 py-2 -ml-px text-sm font-medium text-gray-500 bg-white border border-gray-300 cursor-default rounded-r-md leading-5 dark:bg-gray-800 dark:border-gray-600" aria-hidden="true">
++                                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
++                                    <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
++                                </svg>
++                            </span>
++                        </span>
++                    @endif
++                </span>
++            </div>
++        </div>
++    </nav>
++@endif

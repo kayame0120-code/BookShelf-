@@ -1,0 +1,1973 @@
+# 抽出台帳 R ルート（route:list 全件）
+
+- 件数: 52
+- 記入規則: docs/02_発注書/98_実装仕様抽出調査.md の §6
+- ブロック・F行の削除、並べ替え、F行本文と「- 」で始まる入口情報の編集は禁止。「事実:」行の記入と追加のみ行う。
+
+---
+
+### R001 GET|HEAD /
+- 名前: （なし）
+- 処理: App\Http\Controllers\BookController@index
+- ミドルウェア: web
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: routes/web.php:25 Route::get('/', [BookController::class, 'index']);
+  - 事実: app/Http/Controllers/BookController.php:23-56 public function index(Request $request): View
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし sed -n '23,56p' app/Http/Controllers/BookController.php | grep -nE 'authorize|Gate|can\(' → 出力0件
+  - 事実: 該当なし（ミドルウェア）照合R12 GET|HEAD / ..... BookController@index ⇂ web（auth なし）
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: 該当なし sed -n '23,56p' app/Http/Controllers/BookController.php | grep -nE 'validate|Validator|FormRequest' → 出力0件（引数は app/Http/Controllers/BookController.php:23 Request $request）
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/BookController.php:52-55 return view('books.index', [ 'books' => $books, 'genres' => Genre::all(), ]);
+  - 事実: 照合R22 GET // -> 200
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 該当なし（入力検証の失敗応答） app/Http/Controllers/BookController.php:23 public function index(Request $request): View の引数は Request。sed -n '23,56p' app/Http/Controllers/BookController.php | grep -nE 'validate|Validator|FormRequest' → 出力0件
+  - 事実: app/Http/Controllers/BookController.php:35 $genre = (int) $request->query('genre', 0);（整数でない値は (int) 変換される）
+  - 事実: app/Http/Controllers/BookController.php:47 default => $query->orderByDesc('created_at'),（sort の未定義値は default へ）
+  - 事実: 照合R160 GET /books?keyword=zzzzqqqq → 200 / 189: <p class="text-gray-500">書籍が登録されていません。</p>
+  - 事実: 照合R161 GET /books?page=999 → 200 / 189: <p class="text-gray-500">書籍が登録されていません。</p>
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: app/Http/Controllers/BookController.php:25 $query = Book::query()->with('genres');
+  - 事実: app/Http/Controllers/BookController.php:27-33 $keyword = trim((string) $request->query('keyword', '')); if ($keyword !== '') { $query->where(function ($q) use ($keyword) { $q->where('title', 'like', "%{$keyword}%")->orWhere('author', 'like', "%{$keyword}%");
+  - 事実: app/Http/Controllers/BookController.php:35-40 $genre = (int) $request->query('genre', 0); if ($genre > 0) { $query->whereHas('genres', function ($q) use ($genre) { $q->where('genres.id', $genre);
+  - 事実: app/Http/Controllers/BookController.php:42-48 $sort = (string) $request->query('sort', 'newest'); match ($sort) { 'oldest' => $query->orderBy('created_at'), 'title' => $query->orderBy('title'), 'rating' => $query->withAvg('reviews', 'rating')->orderByDesc('reviews_avg_rating'), default => $query->orderByDesc('created_at'), };
+  - 事実: app/Http/Controllers/BookController.php:50 $books = $query->paginate(10)->withQueryString();
+  - 事実: app/Http/Controllers/BookController.php:54 'genres' => Genre::all(),
+  - 事実: app/Models/Book.php:14 use HasFactory, SoftDeletes;
+  - 事実: 照合R163 select `books`.*, (select avg(`reviews`.`rating`) from `reviews` where `books`.`id` = `reviews`.`book_id`) as `reviews_avg_rating` from `books` where `books`.`deleted_at` is null order by `reviews_avg_rating` desc
+  - 事実: 照合R162 ### GET /books?sort=zzz の出力10件（吾輩は猫である／人を動かす／…／FACTFULNESS）が ### GET /books?sort=newest の出力10件と同じ並び
+  - 事実: 照合R164 ### GET /books?sort=title -> 200 href="http://localhost:8022/books?sort=title&amp;page=2"
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし sed -n '23,56p' app/Http/Controllers/BookController.php | grep -nE 'Http::|Notification|notify|Log::|event\(|dispatch' → 出力0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: 該当なし（パス / を叩くテスト） grep -rnE "get\('/'\)" tests → 出力0件
+  - 事実: 同じ処理（BookController@index）を /books で叩くテストは R010 F8 に記載
+
+### R002 POST /_ignition/execute-solution
+- 名前: ignition.executeSolution
+- 処理: Spatie\LaravelIgnition\Http\Controllers\ExecuteSolutionController
+- ミドルウェア: Spatie\LaravelIgnition\Http\Middleware\RunnableSolutionsEnabled
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: N/A-外部パッケージ（spatie/laravel-ignition） grep -rn 'ignition' app config routes → 出力0件
+  - 事実: 照合R12 POST _ignition/execute-solution ignition.executeSolution › Spatie\LaravelIgnition › ExecuteSolutionController ⇂ Spatie\LaravelIgnition\Http\Middleware\RunnableSolutionsEnabled
+  - 事実: composer.json:22 "spatie/laravel-ignition": "^2.0"
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: N/A-外部パッケージ（spatie/laravel-ignition） grep -rn 'ignition' app config routes → 出力0件
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: N/A-外部パッケージ（spatie/laravel-ignition） grep -rn 'ignition' app config routes → 出力0件
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: N/A-外部パッケージ（spatie/laravel-ignition） grep -rn 'ignition' app config routes → 出力0件
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: N/A-外部パッケージ（spatie/laravel-ignition） grep -rn 'ignition' app config routes → 出力0件
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: N/A-外部パッケージ（spatie/laravel-ignition） grep -rn 'ignition' app config routes → 出力0件
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: N/A-外部パッケージ（spatie/laravel-ignition） grep -rn 'ignition' app config routes → 出力0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: 該当なし grep -rn '_ignition' tests → 出力0件
+
+### R003 GET|HEAD /_ignition/health-check
+- 名前: ignition.healthCheck
+- 処理: Spatie\LaravelIgnition\Http\Controllers\HealthCheckController
+- ミドルウェア: Spatie\LaravelIgnition\Http\Middleware\RunnableSolutionsEnabled
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: N/A-外部パッケージ（spatie/laravel-ignition） grep -rn 'ignition' app config routes → 出力0件
+  - 事実: 照合R12 GET|HEAD _ignition/health-check ignition.healthCheck › Spatie\LaravelIgnition › HealthCheckController ⇂ Spatie\LaravelIgnition\Http\Middleware\RunnableSolutionsEnabled
+  - 事実: composer.json:22 "spatie/laravel-ignition": "^2.0"
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: N/A-外部パッケージ（spatie/laravel-ignition） grep -rn 'ignition' app config routes → 出力0件
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: N/A-外部パッケージ（spatie/laravel-ignition） grep -rn 'ignition' app config routes → 出力0件
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: N/A-外部パッケージ（spatie/laravel-ignition） grep -rn 'ignition' app config routes → 出力0件
+  - 事実: 照合R22 GET /_ignition/health-check -> 200
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: N/A-外部パッケージ（spatie/laravel-ignition） grep -rn 'ignition' app config routes → 出力0件
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: N/A-外部パッケージ（spatie/laravel-ignition） grep -rn 'ignition' app config routes → 出力0件
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: N/A-外部パッケージ（spatie/laravel-ignition） grep -rn 'ignition' app config routes → 出力0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: 該当なし grep -rn '_ignition' tests → 出力0件
+
+### R004 POST /_ignition/update-config
+- 名前: ignition.updateConfig
+- 処理: Spatie\LaravelIgnition\Http\Controllers\UpdateConfigController
+- ミドルウェア: Spatie\LaravelIgnition\Http\Middleware\RunnableSolutionsEnabled
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: N/A-外部パッケージ（spatie/laravel-ignition） grep -rn 'ignition' app config routes → 出力0件
+  - 事実: 照合R12 POST _ignition/update-config ignition.updateConfig › Spatie\LaravelIgnition › UpdateConfigController ⇂ Spatie\LaravelIgnition\Http\Middleware\RunnableSolutionsEnabled
+  - 事実: composer.json:22 "spatie/laravel-ignition": "^2.0"
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: N/A-外部パッケージ（spatie/laravel-ignition） grep -rn 'ignition' app config routes → 出力0件
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: N/A-外部パッケージ（spatie/laravel-ignition） grep -rn 'ignition' app config routes → 出力0件
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: N/A-外部パッケージ（spatie/laravel-ignition） grep -rn 'ignition' app config routes → 出力0件
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: N/A-外部パッケージ（spatie/laravel-ignition） grep -rn 'ignition' app config routes → 出力0件
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: N/A-外部パッケージ（spatie/laravel-ignition） grep -rn 'ignition' app config routes → 出力0件
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: N/A-外部パッケージ（spatie/laravel-ignition） grep -rn 'ignition' app config routes → 出力0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: 該当なし grep -rn '_ignition' tests → 出力0件
+
+### R005 GET|HEAD /api/v1/books
+- 名前: （なし）
+- 処理: App\Http\Controllers\Api\V1\BookController@index
+- ミドルウェア: api
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:23-44 public function index(IndexBookRequest $request): AnonymousResourceCollection
+  - 事実: routes/api.php:17-19 Route::prefix('v1')->group(function () { // 読み取り系（認証なし・公開） Route::get('/books', [BookController::class, 'index']);
+  - 事実: app/Providers/RouteServiceProvider.php:32-33 Route::middleware('api') ->prefix('api')
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし sed -n '23,44p' app/Http/Controllers/Api/V1/BookController.php | grep -nE 'authorize|Gate|can\(' → 出力0件
+  - 事実: app/Http/Requests/Api/V1/ApiFormRequest.php:14-17 public function authorize(): bool { return true; }
+  - 事実: 該当なし（ミドルウェア）照合R12 GET|HEAD api/v1/books ..... Api\V1\BookController@index ⇂ api（auth:sanctum なし）
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: app/Http/Requests/Api/V1/IndexBookRequest.php:15 'keyword' => ['nullable', 'string', 'max:255'],
+  - 事実: app/Http/Requests/Api/V1/IndexBookRequest.php:16 'genre_id' => ['nullable', 'integer', 'exists:genres,id'],
+  - 事実: app/Http/Requests/Api/V1/IndexBookRequest.php:17 'page' => ['nullable', 'integer', 'min:1'],
+  - 事実: app/Http/Requests/Api/V1/IndexBookRequest.php:18 'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+  - 事実: app/Http/Requests/Api/V1/IndexBookRequest.php:30 'keyword.max' => '検索キーワードは255文字以内で入力してください',
+  - 事実: app/Http/Requests/Api/V1/IndexBookRequest.php:31 'genre_id.integer' => '指定されたジャンルが存在しません',
+  - 事実: app/Http/Requests/Api/V1/IndexBookRequest.php:32 'genre_id.exists' => '指定されたジャンルが存在しません',
+  - 事実: app/Http/Requests/Api/V1/IndexBookRequest.php:33 'page.integer' => 'ページ番号は1以上の整数で指定してください',
+  - 事実: app/Http/Requests/Api/V1/IndexBookRequest.php:34 'page.min' => 'ページ番号は1以上の整数で指定してください',
+  - 事実: app/Http/Requests/Api/V1/IndexBookRequest.php:35 'per_page.integer' => '取得件数は1〜100の範囲で指定してください',
+  - 事実: app/Http/Requests/Api/V1/IndexBookRequest.php:36 'per_page.min' => '取得件数は1〜100の範囲で指定してください',
+  - 事実: app/Http/Requests/Api/V1/IndexBookRequest.php:37 'per_page.max' => '取得件数は1〜100の範囲で指定してください',
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:43 return BookListResource::collection($books);
+  - 事実: app/Http/Resources/BookListResource.php:17-27 return [ 'id' => $this->id, 'title' => $this->title, 'author' => $this->author, 'isbn' => $this->isbn, 'published_date' => $this->published_date?->format('Y-m-d'), 'image_url' => $this->image_url, 'average_rating' => round((float) $this->reviews_avg_rating, 1), 'reviews_count' => $this->reviews_count, 'genres' => GenreResource::collection($this->whenLoaded('genres')), ];
+  - 事実: app/Http/Resources/GenreResource.php:17-20 return [ 'id' => $this->id, 'name' => $this->name, ];
+  - 事実: 照合R180 # GET /api/v1/books?per_page=2 {"data":[{"id":9,"title":"火花",…,"genres":[{"id":1,"name":"小説"}]},…],"links":{"first":…,"last":…,"prev":null,"next":…},"meta":{"current_page":1,"from":1,"last_page":6,"links":[…],"path":"http:\/\/localhost:8022\/api\/v1\/books","per_page":2,"to":2,"total":11}} HTTP 200
+  - 事実: 照合R244 # 既定 per_page data件数 10 meta.per_page 10 meta.total 11 meta.last_page 2 / data[0]のキー ['id', 'title', 'author', 'isbn', 'published_date', 'image_url', 'average_rating', 'reviews_count', 'genres']
+  - 事実: 照合R244 # 該当0件（keyword=zzzzzz） {"data":[],…,"meta":{…,"total":0}} HTTP 200
+  - 事実: 照合R243 # GET /api/v1/books?per_page=100 HTTP 200 {"data件数": 11, "meta.per_page": 100} / # GET /api/v1/books?per_page=1 HTTP 200 {"data件数": 1, "meta.per_page": 1}
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: app/Http/Requests/Api/V1/ApiFormRequest.php:22-27 protected function failedValidation(Validator $validator): void { throw new HttpResponseException(response()->json([ 'message' => '入力内容に誤りがあります。', 'errors' => $validator->errors(), ], 422));
+  - 事実: 照合R181 # GET /api/v1/books?genre_id=abc&page=0&per_page=101 {"message":"入力内容に誤りがあります。","errors":{"genre_id":["指定されたジャンルが存在しません"],"page":["ページ番号は1以上の整数で指定してください"],"per_page":["取得件数は1〜100の範囲で指定してください"]}} HTTP 422
+  - 事実: 照合R243 # GET /api/v1/books?per_page=0 HTTP 422 {"message": "入力内容に誤りがあります。", "errors": {"per_page": ["取得件数は1〜100の範囲で指定してください"]}}
+  - 事実: 照合R243 # GET /api/v1/books?per_page=101 HTTP 422 {"message": "入力内容に誤りがあります。", "errors": {"per_page": ["取得件数は1〜100の範囲で指定してください"]}}
+  - 事実: 照合R243 # GET /api/v1/books?per_page=abc HTTP 422 {"message": "入力内容に誤りがあります。", "errors": {"per_page": ["取得件数は1〜100の範囲で指定してください"]}}
+  - 事実: 照合R243 # GET /api/v1/books?page=0 HTTP 422 {"message": "入力内容に誤りがあります。", "errors": {"page": ["ページ番号は1以上の整数で指定してください"]}}
+  - 事実: 照合R243 # GET /api/v1/books?page=abc HTTP 422 {"message": "入力内容に誤りがあります。", "errors": {"page": ["ページ番号は1以上の整数で指定してください"]}}
+  - 事実: 照合R243 # GET /api/v1/books?genre_id=99999 HTTP 422 {"message": "入力内容に誤りがあります。", "errors": {"genre_id": ["指定されたジャンルが存在しません"]}}
+  - 事実: 照合R243 # GET /api/v1/books?genre_id=abc HTTP 422 {"message": "入力内容に誤りがあります。", "errors": {"genre_id": ["指定されたジャンルが存在しません"]}}
+  - 事実: 照合R243 # GET /api/v1/books?keyword=aaaa…(256文字) HTTP 422 {"message": "入力内容に誤りがあります。", "errors": {"keyword": ["検索キーワードは255文字以内で入力してください"]}}
+  - 事実: app/Http/Kernel.php:43 \Illuminate\Routing\Middleware\ThrottleRequests::class.':api',
+  - 事実: app/Providers/RouteServiceProvider.php:27-28 RateLimiter::for('api', function (Request $request) { return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:25 $perPage = $request->input('per_page', 10);
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:27-29 $books = Book::with('genres') ->withAvg('reviews', 'rating') ->withCount('reviews')
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:30-35 ->when($request->keyword, function ($query, $keyword) { $query->where(function ($q) use ($keyword) { $q->where('title', 'like', "%{$keyword}%") ->orWhere('author', 'like', "%{$keyword}%");
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:36-38 ->when($request->genre_id, function ($query, $genreId) { $query->whereHas('genres', fn ($q) => $q->where('genres.id', $genreId));
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:39-41 ->latest() ->paginate($perPage) ->withQueryString();
+  - 事実: app/Models/Book.php:14 use HasFactory, SoftDeletes;
+  - 事実: 照合R244 # keyword=Code [(7, 'Clean Code')] / # per_page=3&page=2 [4, 5, 6] 3 2 4
+  - 事実: 照合R240 GET /api/v1/books?genre_id=3&page=1 → data の id 3, 7（genres [{"id": 3, "name": "技術書"}]） total 2
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -nE 'Http::|Notification|notify|Log::|event\(|dispatch' app/Http/Controllers/Api/V1/BookController.php → 出力0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/Api/BookApiTest.php:53 test_index_is_public_returns_200
+  - 事実: tests/Feature/Api/BookApiTest.php:76 test_index_keyword_filter
+  - 事実: tests/Feature/Api/BookApiTest.php:91 test_index_genre_filter
+  - 事実: tests/Feature/ScreenAccessTest.php:38 test_public_pages_accessible_by_guest（L45 $this->getJson('/api/v1/books')->assertOk();）
+  - 事実: tests/Feature/BookCrudTest.php:114 test_deleted_book_excluded_from_listings（L126 $this->getJson('/api/v1/books')->assertJsonMissing(['id' => $book->id]);）
+
+### R006 POST /api/v1/books
+- 名前: （なし）
+- 処理: App\Http\Controllers\Api\V1\BookController@store
+- ミドルウェア: api, App\Http\Middleware\Authenticate:sanctum
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:61-73 public function store(StoreApiBookRequest $request): JsonResponse
+  - 事実: routes/api.php:22-24 // 書き込み系（Sanctumトークン認証必須） Route::middleware('auth:sanctum')->group(function () { Route::post('/books', [BookController::class, 'store']);
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし sed -n '61,73p' app/Http/Controllers/Api/V1/BookController.php | grep -nE 'authorize|Gate|can\(' → 出力0件
+  - 事実: app/Http/Requests/Api/V1/ApiFormRequest.php:14-17 public function authorize(): bool { return true; }
+  - 事実: routes/api.php:23 Route::middleware('auth:sanctum')->group(function () {
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: app/Http/Requests/Api/V1/StoreApiBookRequest.php:15 'title' => ['required', 'string', 'max:255'],
+  - 事実: app/Http/Requests/Api/V1/StoreApiBookRequest.php:16 'author' => ['required', 'string', 'max:255'],
+  - 事実: app/Http/Requests/Api/V1/StoreApiBookRequest.php:17 'isbn' => ['required', 'string', 'regex:/^[0-9]{13}$/', 'unique:books,isbn'],
+  - 事実: app/Http/Requests/Api/V1/StoreApiBookRequest.php:18 'published_date' => ['required', 'date'],
+  - 事実: app/Http/Requests/Api/V1/StoreApiBookRequest.php:19 'description' => ['nullable', 'string', 'max:1000'],
+  - 事実: app/Http/Requests/Api/V1/StoreApiBookRequest.php:20 'image_url' => ['nullable', 'url', 'max:255'],
+  - 事実: app/Http/Requests/Api/V1/StoreApiBookRequest.php:21 'genres' => ['required', 'array', 'min:1'],
+  - 事実: app/Http/Requests/Api/V1/StoreApiBookRequest.php:22 'genres.*' => ['exists:genres,id'],
+  - 事実: app/Http/Requests/Api/V1/StoreApiBookRequest.php:34 'title.required' => 'タイトルを入力してください',
+  - 事実: app/Http/Requests/Api/V1/StoreApiBookRequest.php:35 'title.max' => 'タイトルは255文字以内で入力してください',
+  - 事実: app/Http/Requests/Api/V1/StoreApiBookRequest.php:36 'author.required' => '著者名を入力してください',
+  - 事実: app/Http/Requests/Api/V1/StoreApiBookRequest.php:37 'author.max' => '著者名は255文字以内で入力してください',
+  - 事実: app/Http/Requests/Api/V1/StoreApiBookRequest.php:38 'isbn.required' => 'ISBNを入力してください',
+  - 事実: app/Http/Requests/Api/V1/StoreApiBookRequest.php:39 'isbn.regex' => 'ISBNは13桁の数字で入力してください',
+  - 事実: app/Http/Requests/Api/V1/StoreApiBookRequest.php:40 'isbn.unique' => 'このISBNは既に登録されています',
+  - 事実: app/Http/Requests/Api/V1/StoreApiBookRequest.php:41 'published_date.required' => '出版日を入力してください',
+  - 事実: app/Http/Requests/Api/V1/StoreApiBookRequest.php:42 'published_date.date' => '出版日は正しい日付形式で入力してください',
+  - 事実: app/Http/Requests/Api/V1/StoreApiBookRequest.php:43 'description.max' => '説明は1000文字以内で入力してください',
+  - 事実: app/Http/Requests/Api/V1/StoreApiBookRequest.php:44 'image_url.url' => '画像URLの形式が正しくありません',
+  - 事実: app/Http/Requests/Api/V1/StoreApiBookRequest.php:45 'image_url.max' => '画像URLは255文字以内で入力してください',
+  - 事実: app/Http/Requests/Api/V1/StoreApiBookRequest.php:46 'genres.required' => 'ジャンルを1つ以上選択してください',
+  - 事実: app/Http/Requests/Api/V1/StoreApiBookRequest.php:47 'genres.min' => 'ジャンルを1つ以上選択してください',
+  - 事実: app/Http/Requests/Api/V1/StoreApiBookRequest.php:48 'genres.*.exists' => '選択されたジャンルが存在しません',
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:70 $book->load('genres')->loadAvg('reviews', 'rating')->loadCount('reviews');
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:72 return (new BookResource($book))->response()->setStatusCode(Response::HTTP_CREATED);
+  - 事実: app/Http/Resources/BookResource.php:17-29 return [ 'id' => $this->id, 'title' => $this->title, 'author' => $this->author, 'isbn' => $this->isbn, 'published_date' => $this->published_date?->format('Y-m-d'), 'description' => $this->description, 'image_url' => $this->image_url, 'average_rating' => round((float) $this->reviews_avg_rating, 1), 'reviews_count' => $this->reviews_count, 'genres' => GenreResource::collection($this->whenLoaded('genres')), 'reviews' => ReviewResource::collection($this->whenLoaded('reviews')), ];
+  - 事実: app/Http/Resources/GenreResource.php:17-20 return [ 'id' => $this->id, 'name' => $this->name, ];
+  - 事実: app/Http/Resources/ReviewResource.php:17-22 return [ 'user_name' => $this->user->name, 'rating' => $this->rating, 'comment' => $this->comment, 'created_at' => $this->created_at->toIso8601String(), ];
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: app/Http/Requests/Api/V1/ApiFormRequest.php:22-27 protected function failedValidation(Validator $validator): void { throw new HttpResponseException(response()->json([ 'message' => '入力内容に誤りがあります。', 'errors' => $validator->errors(), ], 422));
+  - 事実: app/Exceptions/Handler.php:41-45 $this->renderable(function (AuthenticationException $e, Request $request) { if ($request->is('api/*')) { return response()->json(['message' => '認証が必要です。'], 401);
+  - 事実: 照合R245 # POST /api/v1/books（トークンなし・Acceptなし） {"message":"\u8a8d\u8a3c\u304c\u5fc5\u8981\u3067\u3059\u3002"} HTTP 401 / # message のデコード {'message': '認証が必要です。'}
+  - 事実: 照合R245 # POST /api/v1/books（Authorization: Bearer invalid-token） HTTP 401
+  - 事実: 照合R182 # POST /api/v1/books (Authorizationヘッダなし) {"message":"認証が必要です。"} HTTP 401
+  - 事実: app/Http/Kernel.php:43 \Illuminate\Routing\Middleware\ThrottleRequests::class.':api',
+  - 事実: app/Providers/RouteServiceProvider.php:27-28 RateLimiter::for('api', function (Request $request) { return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:63-68 $book = DB::transaction(function () use ($request) { $book = Book::create($request->validated() + ['user_id' => Auth::id()]); $book->genres()->sync($request->genres); return $book; });
+  - 事実: app/Models/Book.php:16-24 protected $fillable = [ 'title', 'author', 'isbn', 'published_date', 'description', 'image_url', 'user_id', ];
+  - 事実: app/Models/Book.php:40-43 public function genres(): BelongsToMany { return $this->belongsToMany(Genre::class, 'book_genre');
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -nE 'Http::|Notification|notify|Log::|event\(|dispatch' app/Http/Controllers/Api/V1/BookController.php → 出力0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/Api/BookApiTest.php:111 test_store_success_with_sanctum
+  - 事実: tests/Feature/Api/BookApiTest.php:154 test_store_unauthenticated_returns_401
+  - 事実: tests/Feature/Api/BookApiTest.php:233 test_store_validation_error_when_authenticated
+  - 事実: tests/Feature/WebErrorPageTest.php:68 test_api_401_returns_json
+
+### R007 GET|HEAD /api/v1/books/{book}
+- 名前: （なし）
+- 処理: App\Http\Controllers\Api\V1\BookController@show
+- ミドルウェア: api
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:49-56 public function show(Book $book): BookResource
+  - 事実: routes/api.php:20 Route::get('/books/{book}', [BookController::class, 'show']);
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし sed -n '49,56p' app/Http/Controllers/Api/V1/BookController.php | grep -nE 'authorize|Gate|can\(' → 出力0件
+  - 事実: 該当なし（ミドルウェア）照合R12 GET|HEAD api/v1/books/{book} ..... Api\V1\BookController@show ⇂ api（auth:sanctum なし）
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: 該当なし sed -n '49,56p' app/Http/Controllers/Api/V1/BookController.php | grep -nE 'validate|Validator|Request' → 出力0件
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:55 return new BookResource($book);
+  - 事実: app/Http/Resources/BookResource.php:17-29 return [ 'id' => $this->id, 'title' => $this->title, 'author' => $this->author, 'isbn' => $this->isbn, 'published_date' => $this->published_date?->format('Y-m-d'), 'description' => $this->description, 'image_url' => $this->image_url, 'average_rating' => round((float) $this->reviews_avg_rating, 1), 'reviews_count' => $this->reviews_count, 'genres' => GenreResource::collection($this->whenLoaded('genres')), 'reviews' => ReviewResource::collection($this->whenLoaded('reviews')), ];
+  - 事実: app/Http/Resources/GenreResource.php:17-20 return [ 'id' => $this->id, 'name' => $this->name, ];
+  - 事実: app/Http/Resources/ReviewResource.php:17-22 return [ 'user_name' => $this->user->name, 'rating' => $this->rating, 'comment' => $this->comment, 'created_at' => $this->created_at->toIso8601String(), ];
+  - 事実: 照合R241 HTTP 200 / --- decoded: {"data": {"id": 3, "title": "リーダブルコード", "author": "Dustin Boswell", "isbn": "9784873115658", "published_date": "2012-06-23", "description": "他人が読んで…解説する。", "image_url": "https://placehold.co/200x300/e2e8f0/475569?text=3", "average_rating": 4, "reviews_count": 3, "genres": [{"id": 3, "name": "技術書"}], "reviews": [{"user_name": "鈴木花子", "rating": 4, "comment": "とても参考になりました。", "created_at": "2026-09-27T09:49:38+09:00"}, …]}}
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: app/Exceptions/Handler.php:35-39 $this->renderable(function (NotFoundHttpException $e, Request $request) { if ($request->is('api/*')) { return response()->json(['message' => '指定された書籍が見つかりません。'], 404);
+  - 事実: 照合R242 GET /api/v1/books/99999 {"message":"\u6307\u5b9a…"} HTTP 404 / GET /api/v1/books/abc HTTP 404 / # message のデコード {'message': '指定された書籍が見つかりません。'}
+  - 事実: 照合R180 # GET /api/v1/books/99999 {"message":"指定された書籍が見つかりません。"} HTTP 404
+  - 事実: 該当なし（削除済みの解決） grep -rn 'withTrashed' routes/api.php → 出力0件
+  - 事実: app/Http/Kernel.php:43 \Illuminate\Routing\Middleware\ThrottleRequests::class.':api',
+  - 事実: app/Providers/RouteServiceProvider.php:27-28 RateLimiter::for('api', function (Request $request) { return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:51-53 $book->load(['genres', 'reviews.user']) ->loadAvg('reviews', 'rating') ->loadCount('reviews');
+  - 事実: app/Models/Book.php:14 use HasFactory, SoftDeletes;
+  - 事実: 照合R22 GET /api/v1/books/1 -> 200
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -nE 'Http::|Notification|notify|Log::|event\(|dispatch' app/Http/Controllers/Api/V1/BookController.php → 出力0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/Api/BookApiTest.php:65 test_show_is_public_returns_200
+  - 事実: tests/Feature/Api/BookApiTest.php:216 test_show_not_found_returns_json_404
+  - 事実: tests/Feature/Api/BookApiTest.php:224 test_show_soft_deleted_returns_404
+  - 事実: tests/Feature/WebErrorPageTest.php:58 test_api_404_returns_json
+
+### R008 PUT /api/v1/books/{book}
+- 名前: （なし）
+- 処理: App\Http\Controllers\Api\V1\BookController@update
+- ミドルウェア: api, App\Http\Middleware\Authenticate:sanctum
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:78-90 public function update(UpdateApiBookRequest $request, Book $book): BookResource
+  - 事実: routes/api.php:25 Route::put('/books/{book}', [BookController::class, 'update']);
+  - 事実: routes/api.php:23 Route::middleware('auth:sanctum')->group(function () {
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:80 $this->authorize('update', $book);
+  - 事実: app/Policies/BookPolicy.php:13-16 public function update(User $user, Book $book): bool { return $user->id === $book->user_id && ! $book->trashed();
+  - 事実: app/Providers/AuthServiceProvider.php:16 \App\Models\Book::class => \App\Policies\BookPolicy::class,
+  - 事実: app/Http/Requests/Api/V1/ApiFormRequest.php:14-17 public function authorize(): bool { return true; }
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: app/Http/Requests/Api/V1/UpdateApiBookRequest.php:17 'title' => ['required', 'string', 'max:255'],
+  - 事実: app/Http/Requests/Api/V1/UpdateApiBookRequest.php:18 'author' => ['required', 'string', 'max:255'],
+  - 事実: app/Http/Requests/Api/V1/UpdateApiBookRequest.php:19-24 'isbn' => [ 'required', 'string', 'regex:/^[0-9]{13}$/', Rule::unique('books', 'isbn')->ignore($this->route('book')), ],
+  - 事実: app/Http/Requests/Api/V1/UpdateApiBookRequest.php:25 'published_date' => ['required', 'date'],
+  - 事実: app/Http/Requests/Api/V1/UpdateApiBookRequest.php:26 'description' => ['nullable', 'string', 'max:1000'],
+  - 事実: app/Http/Requests/Api/V1/UpdateApiBookRequest.php:27 'image_url' => ['nullable', 'url', 'max:255'],
+  - 事実: app/Http/Requests/Api/V1/UpdateApiBookRequest.php:28 'genres' => ['required', 'array', 'min:1'],
+  - 事実: app/Http/Requests/Api/V1/UpdateApiBookRequest.php:29 'genres.*' => ['exists:genres,id'],
+  - 事実: app/Http/Requests/Api/V1/UpdateApiBookRequest.php:41 'title.required' => 'タイトルを入力してください',
+  - 事実: app/Http/Requests/Api/V1/UpdateApiBookRequest.php:42 'title.max' => 'タイトルは255文字以内で入力してください',
+  - 事実: app/Http/Requests/Api/V1/UpdateApiBookRequest.php:43 'author.required' => '著者名を入力してください',
+  - 事実: app/Http/Requests/Api/V1/UpdateApiBookRequest.php:44 'author.max' => '著者名は255文字以内で入力してください',
+  - 事実: app/Http/Requests/Api/V1/UpdateApiBookRequest.php:45 'isbn.required' => 'ISBNを入力してください',
+  - 事実: app/Http/Requests/Api/V1/UpdateApiBookRequest.php:46 'isbn.regex' => 'ISBNは13桁の数字で入力してください',
+  - 事実: app/Http/Requests/Api/V1/UpdateApiBookRequest.php:47 'isbn.unique' => 'このISBNは既に登録されています',
+  - 事実: app/Http/Requests/Api/V1/UpdateApiBookRequest.php:48 'published_date.required' => '出版日を入力してください',
+  - 事実: app/Http/Requests/Api/V1/UpdateApiBookRequest.php:49 'published_date.date' => '出版日は正しい日付形式で入力してください',
+  - 事実: app/Http/Requests/Api/V1/UpdateApiBookRequest.php:50 'description.max' => '説明は1000文字以内で入力してください',
+  - 事実: app/Http/Requests/Api/V1/UpdateApiBookRequest.php:51 'image_url.url' => '画像URLの形式が正しくありません',
+  - 事実: app/Http/Requests/Api/V1/UpdateApiBookRequest.php:52 'image_url.max' => '画像URLは255文字以内で入力してください',
+  - 事実: app/Http/Requests/Api/V1/UpdateApiBookRequest.php:53 'genres.required' => 'ジャンルを1つ以上選択してください',
+  - 事実: app/Http/Requests/Api/V1/UpdateApiBookRequest.php:54 'genres.min' => 'ジャンルを1つ以上選択してください',
+  - 事実: app/Http/Requests/Api/V1/UpdateApiBookRequest.php:55 'genres.*.exists' => '選択されたジャンルが存在しません',
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:87 $book->load('genres')->loadAvg('reviews', 'rating')->loadCount('reviews');
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:89 return new BookResource($book);
+  - 事実: app/Http/Resources/BookResource.php:17-29 return [ 'id' => $this->id, 'title' => $this->title, 'author' => $this->author, 'isbn' => $this->isbn, 'published_date' => $this->published_date?->format('Y-m-d'), 'description' => $this->description, 'image_url' => $this->image_url, 'average_rating' => round((float) $this->reviews_avg_rating, 1), 'reviews_count' => $this->reviews_count, 'genres' => GenreResource::collection($this->whenLoaded('genres')), 'reviews' => ReviewResource::collection($this->whenLoaded('reviews')), ];
+  - 事実: app/Http/Resources/GenreResource.php:17-20 return [ 'id' => $this->id, 'name' => $this->name, ];
+  - 事実: app/Http/Resources/ReviewResource.php:17-22 return [ 'user_name' => $this->user->name, 'rating' => $this->rating, 'comment' => $this->comment, 'created_at' => $this->created_at->toIso8601String(), ];
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: app/Http/Requests/Api/V1/ApiFormRequest.php:22-27 protected function failedValidation(Validator $validator): void { throw new HttpResponseException(response()->json([ 'message' => '入力内容に誤りがあります。', 'errors' => $validator->errors(), ], 422));
+  - 事実: app/Exceptions/Handler.php:41-45 $this->renderable(function (AuthenticationException $e, Request $request) { if ($request->is('api/*')) { return response()->json(['message' => '認証が必要です。'], 401);
+  - 事実: app/Exceptions/Handler.php:47-51 $this->renderable(function (AccessDeniedHttpException $e, Request $request) { if ($request->is('api/*')) { return response()->json(['message' => 'この操作を実行する権限がありません。'], 403);
+  - 事実: app/Exceptions/Handler.php:35-39 $this->renderable(function (NotFoundHttpException $e, Request $request) { if ($request->is('api/*')) { return response()->json(['message' => '指定された書籍が見つかりません。'], 404);
+  - 事実: 照合R245 # PUT /api/v1/books/3（トークンなし） HTTP 401 / # PUT /api/v1/books/99999（トークンなし） HTTP 401 / # PUT /api/v1/books/3（Authorization: Bearer invalid-token） HTTP 401
+  - 事実: 照合R182 # PUT /api/v1/books/1 (Authorizationヘッダなし) {"message":"認証が必要です。"} HTTP 401
+  - 事実: 該当なし（削除済みの解決） grep -rn 'withTrashed' routes/api.php → 出力0件
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:78-80 public function update(UpdateApiBookRequest $request, Book $book): BookResource { $this->authorize('update', $book);（FormRequest の引数が 78 行、authorize が 80 行）
+  - 事実: app/Http/Kernel.php:43 \Illuminate\Routing\Middleware\ThrottleRequests::class.':api',
+  - 事実: app/Providers/RouteServiceProvider.php:27-28 RateLimiter::for('api', function (Request $request) { return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:82-85 DB::transaction(function () use ($request, $book) { $book->update($request->validated()); $book->genres()->sync($request->genres); });
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -nE 'Http::|Notification|notify|Log::|event\(|dispatch' app/Http/Controllers/Api/V1/BookController.php → 出力0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/Api/BookApiTest.php:124 test_update_success_with_sanctum
+  - 事実: tests/Feature/Api/BookApiTest.php:162 test_update_unauthenticated_returns_401
+  - 事実: tests/Feature/Api/BookApiTest.php:184 test_update_other_users_book_returns_403
+  - 事実: tests/Feature/WebErrorPageTest.php:78 test_api_403_returns_json
+
+### R009 DELETE /api/v1/books/{book}
+- 名前: （なし）
+- 処理: App\Http\Controllers\Api\V1\BookController@destroy
+- ミドルウェア: api, App\Http\Middleware\Authenticate:sanctum
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:95-102 public function destroy(Book $book): Response
+  - 事実: routes/api.php:26 Route::delete('/books/{book}', [BookController::class, 'destroy']);
+  - 事実: routes/api.php:23 Route::middleware('auth:sanctum')->group(function () {
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:97 $this->authorize('delete', $book);
+  - 事実: app/Policies/BookPolicy.php:21-24 public function delete(User $user, Book $book): bool { return $user->id === $book->user_id && ! $book->trashed();
+  - 事実: app/Providers/AuthServiceProvider.php:16 \App\Models\Book::class => \App\Policies\BookPolicy::class,
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: 該当なし sed -n '95,102p' app/Http/Controllers/Api/V1/BookController.php | grep -nE 'validate|Validator|Request' → 出力0件
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:101 return response()->noContent();
+  - 事実: tests/Feature/Api/BookApiTest.php:147 $this->deleteJson("/api/v1/books/{$book->id}")->assertStatus(204);
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: app/Exceptions/Handler.php:41-45 $this->renderable(function (AuthenticationException $e, Request $request) { if ($request->is('api/*')) { return response()->json(['message' => '認証が必要です。'], 401);
+  - 事実: app/Exceptions/Handler.php:47-51 $this->renderable(function (AccessDeniedHttpException $e, Request $request) { if ($request->is('api/*')) { return response()->json(['message' => 'この操作を実行する権限がありません。'], 403);
+  - 事実: app/Exceptions/Handler.php:35-39 $this->renderable(function (NotFoundHttpException $e, Request $request) { if ($request->is('api/*')) { return response()->json(['message' => '指定された書籍が見つかりません。'], 404);
+  - 事実: 照合R245 # DELETE /api/v1/books/3（トークンなし） HTTP 401 / # DELETE /api/v1/books/99999（トークンなし） HTTP 401 / # DELETE /api/v1/books/3（Authorization: Bearer invalid-token） HTTP 401
+  - 事実: 照合R182 # DELETE /api/v1/books/1 (Authorizationヘッダなし) {"message":"認証が必要です。"} HTTP 401
+  - 事実: 該当なし（削除済みの解決） grep -rn 'withTrashed' routes/api.php → 出力0件
+  - 事実: app/Http/Kernel.php:43 \Illuminate\Routing\Middleware\ThrottleRequests::class.':api',
+  - 事実: app/Providers/RouteServiceProvider.php:27-28 RateLimiter::for('api', function (Request $request) { return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:99 $book->delete();
+  - 事実: app/Models/Book.php:14 use HasFactory, SoftDeletes;
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -nE 'Http::|Notification|notify|Log::|event\(|dispatch' app/Http/Controllers/Api/V1/BookController.php → 出力0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/Api/BookApiTest.php:141 test_destroy_success_with_sanctum
+  - 事実: tests/Feature/Api/BookApiTest.php:172 test_destroy_unauthenticated_returns_401
+  - 事実: tests/Feature/Api/BookApiTest.php:199 test_destroy_other_users_book_returns_403
+
+### R010 GET|HEAD /books
+- 名前: books.index
+- 処理: App\Http\Controllers\BookController@index
+- ミドルウェア: web
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: routes/web.php:26 Route::get('/books', [BookController::class, 'index'])->name('books.index');
+  - 事実: app/Http/Controllers/BookController.php:23-56 public function index(Request $request): View
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし sed -n '23,56p' app/Http/Controllers/BookController.php | grep -nE 'authorize|Gate|can\(' → 出力0件
+  - 事実: 該当なし（ミドルウェア）照合R12 GET|HEAD books ..... books.index › BookController@index ⇂ web（auth なし）
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: 同上 R001 F3
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/BookController.php:52-55 return view('books.index', [ 'books' => $books, 'genres' => Genre::all(), ]);
+  - 事実: 照合R22 GET /books -> 200
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 同上 R001 F5
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: 同上 R001 F6
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 同上 R001 F7
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/BookSearchTest.php:32 test_keyword_partial_match_returns_only_matching_books
+  - 事実: tests/Feature/BookSearchTest.php:51 test_genre_filter_returns_only_matching_books
+  - 事実: tests/Feature/BookSearchTest.php:66 test_sort_returns_books_in_specified_order
+  - 事実: tests/Feature/BookSearchTest.php:85 test_sort_oldest_returns_ascending_by_created_at
+  - 事実: tests/Feature/BookSearchTest.php:97 test_sort_rating_returns_by_average_rating_desc
+  - 事実: tests/Feature/BookSearchTest.php:110 test_search_condition_preserved_across_pagination
+  - 事実: tests/Feature/BookSearchTest.php:125 test_soft_deleted_book_excluded_from_search
+  - 事実: tests/Feature/BookSearchTest.php:136 test_search_is_public
+  - 事実: tests/Feature/BookFormUiTest.php:20 test_index_renders_search_form
+  - 事実: tests/Feature/BookFormUiTest.php:45 test_search_form_retains_input_values
+  - 事実: tests/Feature/ScreenAccessTest.php:38 test_public_pages_accessible_by_guest（L42 $this->get('/books')->assertOk();）
+  - 事実: tests/Feature/BookCrudTest.php:114 test_deleted_book_excluded_from_listings（L124 $this->get('/books')->assertDontSee($book->title);）
+  - 事実: tests/Feature/BookCrudTest.php:168 test_restore_book（L180 $this->get('/books')->assertSee($book->title);）
+
+### R011 POST /books
+- 名前: books.store
+- 処理: App\Http\Controllers\BookController@store
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/BookController.php:128-138 public function store(StoreBookRequest $request): RedirectResponse
+  - 事実: routes/web.php:29 Route::middleware('auth')->group(function () {
+  - 事実: routes/web.php:32 Route::post('/books', [BookController::class, 'store'])->name('books.store');
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし sed -n '128,138p' app/Http/Controllers/BookController.php | grep -nE 'authorize|Gate|can\(' → 出力0件
+  - 事実: app/Http/Requests/StoreBookRequest.php:12-15 public function authorize(): bool { return true; }
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: app/Http/Requests/StoreBookRequest.php:25 'title' => ['required', 'string', 'max:255'],
+  - 事実: app/Http/Requests/StoreBookRequest.php:26 'author' => ['required', 'string', 'max:255'],
+  - 事実: app/Http/Requests/StoreBookRequest.php:27 'isbn' => ['nullable', 'string', 'regex:/^[0-9]{13}$/', 'unique:books,isbn'],
+  - 事実: app/Http/Requests/StoreBookRequest.php:28 'published_date' => ['nullable', 'date'],
+  - 事実: app/Http/Requests/StoreBookRequest.php:29 'description' => ['nullable', 'string', 'max:1000'],
+  - 事実: app/Http/Requests/StoreBookRequest.php:30 'image_url' => ['nullable', 'url', 'max:255'],
+  - 事実: app/Http/Requests/StoreBookRequest.php:31 'genres' => ['required', 'array', 'min:1'],
+  - 事実: app/Http/Requests/StoreBookRequest.php:32 'genres.*' => ['exists:genres,id'],
+  - 事実: app/Http/Requests/StoreBookRequest.php:44 'title.required' => 'タイトルを入力してください',
+  - 事実: app/Http/Requests/StoreBookRequest.php:45 'title.max' => 'タイトルは255文字以内で入力してください',
+  - 事実: app/Http/Requests/StoreBookRequest.php:46 'author.required' => '著者名を入力してください',
+  - 事実: app/Http/Requests/StoreBookRequest.php:47 'author.max' => '著者名は255文字以内で入力してください',
+  - 事実: app/Http/Requests/StoreBookRequest.php:48 'isbn.regex' => 'ISBNは13桁の数字で入力してください（入力がある場合のみ）',
+  - 事実: app/Http/Requests/StoreBookRequest.php:49 'isbn.unique' => 'このISBNは既に登録されています',
+  - 事実: app/Http/Requests/StoreBookRequest.php:50 'published_date.date' => '出版日は正しい日付形式で入力してください（入力がある場合のみ）',
+  - 事実: app/Http/Requests/StoreBookRequest.php:51 'description.max' => '説明は1000文字以内で入力してください',
+  - 事実: app/Http/Requests/StoreBookRequest.php:52 'image_url.url' => '画像URLの形式が正しくありません',
+  - 事実: app/Http/Requests/StoreBookRequest.php:53 'image_url.max' => '画像URLは255文字以内で入力してください',
+  - 事実: app/Http/Requests/StoreBookRequest.php:54 'genres.required' => 'ジャンルを1つ以上選択してください',
+  - 事実: app/Http/Requests/StoreBookRequest.php:55 'genres.min' => 'ジャンルを1つ以上選択してください',
+  - 事実: app/Http/Requests/StoreBookRequest.php:56 'genres.*.exists' => '選択されたジャンルが存在しません',
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/BookController.php:137 return redirect()->route('books.show', $book)->with('success', '書籍を登録しました');
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: app/Http/Requests/StoreBookRequest.php:7 class StoreBookRequest extends FormRequest（failedValidation の上書きは grep -n failedValidation app/Http/Requests/StoreBookRequest.php app/Http/Requests/UpdateBookRequest.php → 出力0件）
+  - 事実: tests/Feature/BookCrudTest.php:49 test_store_validation_errors
+  - 事実: app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: tests/Feature/ScreenAccessTest.php:68 $this->post(route('books.store'), [])->assertRedirect('/login');
+  - 事実: app/Http/Kernel.php:37 \App\Http\Middleware\VerifyCsrfToken::class,
+  - 事実: app/Exceptions/Handler.php:65-69 $this->renderable(function (TokenMismatchException $e, Request $request) { if (! $request->is('api/*')) { return response()->view('errors.419', [], 419);
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: app/Http/Controllers/BookController.php:130-135 $book = DB::transaction(function () use ($request) { $book = Book::create($request->validated() + ['user_id' => Auth::id()]); $book->genres()->sync($request->genres); return $book; });
+  - 事実: app/Models/Book.php:40-43 public function genres(): BelongsToMany { return $this->belongsToMany(Genre::class, 'book_genre');
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし sed -n '128,138p' app/Http/Controllers/BookController.php | grep -nE 'Http::|Notification|notify|Log::|event\(|dispatch' → 出力0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/BookCrudTest.php:35 test_store_book_success
+  - 事実: tests/Feature/BookCrudTest.php:49 test_store_validation_errors
+  - 事実: tests/Feature/BookCrudTest.php:70 test_genre_sync_on_store_and_update
+  - 事実: tests/Feature/BookCrudTest.php:197 test_deleted_isbn_uniqueness
+  - 事実: tests/Feature/BookCrudAdvancedTest.php:55 test_store_succeeds_with_empty_isbn_and_published_date
+  - 事実: tests/Feature/BookCrudAdvancedTest.php:101 test_isbn_format_validated_only_when_present
+  - 事実: tests/Feature/BookCrudAdvancedTest.php:111 test_isbn_uniqueness_validated_only_when_present
+  - 事実: tests/Feature/BookCrudAdvancedTest.php:122 test_published_date_format_validated_only_when_present
+  - 事実: tests/Feature/BookCrudAdvancedTest.php:132 test_empty_post_does_not_require_isbn_or_published_date
+  - 事実: tests/Feature/ScreenAccessTest.php:64 test_guest_cannot_perform_book_write_actions（L68）
+
+### R012 GET|HEAD /books/create
+- 名前: books.create
+- 処理: App\Http\Controllers\BookController@create
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/BookController.php:118-123 public function create(): View
+  - 事実: routes/web.php:29 Route::middleware('auth')->group(function () {
+  - 事実: routes/web.php:30 Route::get('/books/create', [BookController::class, 'create'])->name('books.create');
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし sed -n '118,123p' app/Http/Controllers/BookController.php | grep -nE 'authorize|Gate|can\(' → 出力0件
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: 該当なし sed -n '118,123p' app/Http/Controllers/BookController.php | grep -nE 'validate|Validator|Request' → 出力0件
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/BookController.php:122 return view('books.create', compact('genres'));
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: 照合R22 GET /books/create -> 302 http://localhost:8022/login
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: app/Http/Controllers/BookController.php:120 $genres = Genre::orderBy('id')->get();
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし sed -n '118,123p' app/Http/Controllers/BookController.php | grep -nE 'Http::|Notification|notify|Log::|event\(|dispatch' → 出力0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/BookCrudAdvancedTest.php:38 test_create_form_displayed_with_genres
+  - 事実: tests/Feature/BookCrudAdvancedTest.php:49 test_create_form_requires_authentication
+  - 事実: tests/Feature/BookFormUiTest.php:59 test_create_renders_isbn_autofill_section
+  - 事実: tests/Feature/ScreenAccessTest.php:25 test_guest_redirected_from_auth_pages（L30）
+  - 事実: tests/Feature/ScreenAccessTest.php:49 test_intended_url_after_login（L53）
+  - 事実: tests/Feature/AuthTest.php:84 test_logout_requires_login_again（L91）
+
+### R013 GET|HEAD /books/isbn/{isbn}
+- 名前: books.searchByIsbn
+- 処理: App\Http\Controllers\BookController@searchByIsbn
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/BookController.php:61-113 public function searchByIsbn(string $isbn): JsonResponse
+  - 事実: routes/web.php:29 Route::middleware('auth')->group(function () {
+  - 事実: routes/web.php:31 Route::get('/books/isbn/{isbn}', [BookController::class, 'searchByIsbn'])->name('books.searchByIsbn');
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし sed -n '61,113p' app/Http/Controllers/BookController.php | grep -nE 'authorize|Gate|can\(' → 出力0件
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: app/Http/Controllers/BookController.php:63-64 if (! preg_match('/^[0-9]{13}$/', $isbn)) { return response()->json(['message' => 'ISBNは13桁の数字で入力してください'], 422);
+  - 事実: 該当なし（FormRequest・Validator） sed -n '61,113p' app/Http/Controllers/BookController.php | grep -nE 'validate\(|Validator|FormRequest' → 出力0件
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/BookController.php:105-112 return response()->json([ 'title' => $volumeInfo['title'] ?? '', 'author' => implode('、', $volumeInfo['authors'] ?? []), 'description' => $volumeInfo['description'] ?? '', 'image_url' => $volumeInfo['imageLinks']['thumbnail'] ?? '', 'published_date' => $publishedDate, 'published_date_padded' => $publishedDatePadded, ]);
+  - 事実: app/Http/Controllers/BookController.php:87 $volumeInfo = $response->json('items.0.volumeInfo', []);
+  - 事実: app/Http/Controllers/BookController.php:91-93 if (preg_match('/^\d{4}$/', $rawDate)) { $publishedDate = $rawDate.'-01-01'; $publishedDatePadded = true;
+  - 事実: app/Http/Controllers/BookController.php:94-96 } elseif (preg_match('/^\d{4}-\d{2}$/', $rawDate)) { $publishedDate = $rawDate.'-01'; $publishedDatePadded = true;
+  - 事実: app/Http/Controllers/BookController.php:97-99 } elseif (preg_match('/^\d{4}-\d{2}-\d{2}$/', $rawDate)) { $publishedDate = $rawDate; $publishedDatePadded = false;
+  - 事実: app/Http/Controllers/BookController.php:100-103 } else { $publishedDate = ''; $publishedDatePadded = false; }
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: app/Http/Controllers/BookController.php:64 return response()->json(['message' => 'ISBNは13桁の数字で入力してください'], 422);
+  - 事実: app/Http/Controllers/BookController.php:74-75 } catch (ConnectionException $e) { return response()->json(['message' => '書籍情報の取得に失敗しました'], 502);
+  - 事実: app/Http/Controllers/BookController.php:78-79 if ($response->failed()) { return response()->json(['message' => '書籍情報の取得に失敗しました'], 502);
+  - 事実: app/Http/Controllers/BookController.php:82-84 $totalItems = $response->json('totalItems', 0); if ($totalItems === 0) { return response()->json(['message' => '該当する書籍が見つかりませんでした'], 404);
+  - 事実: app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: 照合R22 GET /books/isbn/9784101010014 -> 302 http://localhost:8022/login / GET /books/isbn/99999 -> 302 http://localhost:8022/login
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: 該当なし（DB読み書き） sed -n '61,113p' app/Http/Controllers/BookController.php | grep -nE 'Book::|Genre::|DB::|->save|->create|->update|->delete' → 出力0件
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: app/Http/Controllers/BookController.php:73 $response = Http::timeout(5)->get('https://www.googleapis.com/books/v1/volumes', $query);
+  - 事実: app/Http/Controllers/BookController.php:67-70 $query = ['q' => "isbn:{$isbn}"]; if ($apiKey = config('services.google_books.key')) { $query['key'] = $apiKey; }
+  - 事実: config/services.php:34-36 'google_books' => [ 'key' => env('GOOGLE_BOOKS_API_KEY'), ],
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/IsbnSearchTest.php:20 test_isbn_13_digits_success_with_http_fake
+  - 事実: tests/Feature/IsbnSearchTest.php:55 test_isbn_12_digits_returns_422
+  - 事実: tests/Feature/IsbnSearchTest.php:66 test_isbn_14_digits_returns_422
+  - 事実: tests/Feature/IsbnSearchTest.php:77 test_isbn_non_numeric_returns_422
+  - 事実: tests/Feature/IsbnSearchTest.php:88 test_isbn_not_found_returns_404
+  - 事実: tests/Feature/IsbnSearchTest.php:103 test_isbn_upstream_failure_returns_502
+  - 事実: tests/Feature/IsbnSearchTest.php:118 test_isbn_connection_exception_returns_502
+  - 事実: tests/Feature/IsbnSearchTest.php:133 test_api_key_is_sent_when_configured
+  - 事実: tests/Feature/IsbnSearchTest.php:150 test_api_key_absent_when_not_configured
+  - 事実: 該当なし（未ログイン時） grep -rnE 'books/isbn' tests/Feature/ScreenAccessTest.php → 出力0件
+
+### R014 GET|HEAD /books/{book}
+- 名前: books.show
+- 処理: App\Http\Controllers\BookController@show
+- ミドルウェア: web
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/BookController.php:143-153 public function show(Book $book): View
+  - 事実: routes/web.php:36 Route::get('/books/{book}', [BookController::class, 'show'])->name('books.show')->withTrashed();
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし sed -n '143,153p' app/Http/Controllers/BookController.php | grep -nE 'authorize|Gate|can\(' → 出力0件
+  - 事実: 該当なし（ミドルウェア）照合R12 GET|HEAD books/{book} ..... books.show › BookController@show ⇂ web（auth なし）
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: 該当なし sed -n '143,165p' app/Http/Controllers/BookController.php | grep -nE 'validate|Validator|Request' → 出力0件
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/BookController.php:152 return view('books.show', compact('book'));
+  - 事実: 照合R22 GET /books/1 -> 200
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: app/Exceptions/Handler.php:53-57 $this->renderable(function (NotFoundHttpException $e, Request $request) { if (! $request->is('api/*')) { return response()->view('errors.404', [], 404);
+  - 事実: 照合R22 GET /books/99999 -> 404
+  - 事実: routes/web.php:36 ->withTrashed();（削除済みも解決）
+  - 事実: 照合R22 # 削除済み書籍（deleted_at IS NOT NULL）の最小IDは NULL のため、削除済み書籍での {book} ルートの実行対象なし
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: app/Http/Controllers/BookController.php:145-150 $book->load([ 'genres', 'reviews' => fn ($q) => $q->latest(), 'reviews.user', 'reviews.likedByUsers', ]);
+  - 事実: routes/web.php:36 ->withTrashed();
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし sed -n '143,205p' app/Http/Controllers/BookController.php | grep -nE 'Http::|Notification|notify|Log::|event\(|dispatch' → 出力0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/BookCrudTest.php:130 test_deleted_book_show_page
+  - 事実: tests/Feature/BookCrudTest.php:141 test_deleted_book_hides_buttons
+  - 事実: tests/Feature/BookCrudTest.php:154 test_deleted_book_reviews_still_visible
+  - 事実: tests/Feature/ScreenAccessTest.php:38 test_public_pages_accessible_by_guest（L43 $this->get("/books/{$book->id}")->assertOk();）
+
+### R015 PUT /books/{book}
+- 名前: books.update
+- 処理: App\Http\Controllers\BookController@update
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/BookController.php:170-180 public function update(UpdateBookRequest $request, Book $book): RedirectResponse
+  - 事実: routes/web.php:39 Route::middleware('auth')->group(function () {
+  - 事実: routes/web.php:41 Route::put('/books/{book}', [BookController::class, 'update'])->name('books.update');
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: app/Http/Controllers/BookController.php:172 $this->authorize('update', $book);
+  - 事実: app/Policies/BookPolicy.php:13-16 public function update(User $user, Book $book): bool { return $user->id === $book->user_id && ! $book->trashed();
+  - 事実: app/Providers/AuthServiceProvider.php:16 \App\Models\Book::class => \App\Policies\BookPolicy::class,
+  - 事実: app/Http/Requests/UpdateBookRequest.php:13-16 public function authorize(): bool { return true; }
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: app/Http/Requests/UpdateBookRequest.php:26 'title' => ['required', 'string', 'max:255'],
+  - 事実: app/Http/Requests/UpdateBookRequest.php:27 'author' => ['required', 'string', 'max:255'],
+  - 事実: app/Http/Requests/UpdateBookRequest.php:28-33 'isbn' => [ 'nullable', 'string', 'regex:/^[0-9]{13}$/', Rule::unique('books', 'isbn')->ignore($this->route('book')), ],
+  - 事実: app/Http/Requests/UpdateBookRequest.php:34 'published_date' => ['nullable', 'date'],
+  - 事実: app/Http/Requests/UpdateBookRequest.php:35 'description' => ['nullable', 'string', 'max:1000'],
+  - 事実: app/Http/Requests/UpdateBookRequest.php:36 'image_url' => ['nullable', 'url', 'max:255'],
+  - 事実: app/Http/Requests/UpdateBookRequest.php:37 'genres' => ['required', 'array', 'min:1'],
+  - 事実: app/Http/Requests/UpdateBookRequest.php:38 'genres.*' => ['exists:genres,id'],
+  - 事実: app/Http/Requests/UpdateBookRequest.php:50 'title.required' => 'タイトルを入力してください',
+  - 事実: app/Http/Requests/UpdateBookRequest.php:51 'title.max' => 'タイトルは255文字以内で入力してください',
+  - 事実: app/Http/Requests/UpdateBookRequest.php:52 'author.required' => '著者名を入力してください',
+  - 事実: app/Http/Requests/UpdateBookRequest.php:53 'author.max' => '著者名は255文字以内で入力してください',
+  - 事実: app/Http/Requests/UpdateBookRequest.php:54 'isbn.regex' => 'ISBNは13桁の数字で入力してください（入力がある場合のみ）',
+  - 事実: app/Http/Requests/UpdateBookRequest.php:55 'isbn.unique' => 'このISBNは既に登録されています',
+  - 事実: app/Http/Requests/UpdateBookRequest.php:56 'published_date.date' => '出版日は正しい日付形式で入力してください（入力がある場合のみ）',
+  - 事実: app/Http/Requests/UpdateBookRequest.php:57 'description.max' => '説明は1000文字以内で入力してください',
+  - 事実: app/Http/Requests/UpdateBookRequest.php:58 'image_url.url' => '画像URLの形式が正しくありません',
+  - 事実: app/Http/Requests/UpdateBookRequest.php:59 'image_url.max' => '画像URLは255文字以内で入力してください',
+  - 事実: app/Http/Requests/UpdateBookRequest.php:60 'genres.required' => 'ジャンルを1つ以上選択してください',
+  - 事実: app/Http/Requests/UpdateBookRequest.php:61 'genres.min' => 'ジャンルを1つ以上選択してください',
+  - 事実: app/Http/Requests/UpdateBookRequest.php:62 'genres.*.exists' => '選択されたジャンルが存在しません',
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/BookController.php:179 return redirect()->route('books.show', $book)->with('success', '書籍を更新しました');
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: app/Http/Requests/UpdateBookRequest.php:8 class UpdateBookRequest extends FormRequest（failedValidation の上書きは grep -n failedValidation app/Http/Requests/StoreBookRequest.php app/Http/Requests/UpdateBookRequest.php → 出力0件）
+  - 事実: app/Exceptions/Handler.php:59-63 $this->renderable(function (AccessDeniedHttpException $e, Request $request) { if (! $request->is('api/*')) { return response()->view('errors.403', [], 403);
+  - 事実: app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: tests/Feature/ScreenAccessTest.php:69 $this->put(route('books.update', $book), [])->assertRedirect('/login');
+  - 事実: app/Exceptions/Handler.php:53-57 $this->renderable(function (NotFoundHttpException $e, Request $request) { if (! $request->is('api/*')) { return response()->view('errors.404', [], 404);
+  - 事実: grep -n 'withTrashed' routes/web.php の出力は routes/web.php:36 と routes/web.php:44 の2行（routes/web.php:41 は出力に含まれない）
+  - 事実: app/Http/Kernel.php:37 \App\Http\Middleware\VerifyCsrfToken::class,
+  - 事実: app/Exceptions/Handler.php:65-69 $this->renderable(function (TokenMismatchException $e, Request $request) { if (! $request->is('api/*')) { return response()->view('errors.419', [], 419);
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: app/Http/Controllers/BookController.php:174-177 DB::transaction(function () use ($request, $book) { $book->update($request->validated()); $book->genres()->sync($request->genres); });
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし sed -n '143,205p' app/Http/Controllers/BookController.php | grep -nE 'Http::|Notification|notify|Log::|event\(|dispatch' → 出力0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/BookCrudTest.php:70 test_genre_sync_on_store_and_update
+  - 事実: tests/Feature/BookCrudTest.php:220 test_update_ignores_own_isbn
+  - 事実: tests/Feature/BookCrudAdvancedTest.php:77 test_update_succeeds_with_empty_isbn_and_published_date
+  - 事実: tests/Feature/BookCrudAdvancedTest.php:153 test_other_user_cannot_update
+  - 事実: tests/Feature/ScreenAccessTest.php:64 test_guest_cannot_perform_book_write_actions（L69）
+
+### R016 DELETE /books/{book}
+- 名前: books.destroy
+- 処理: App\Http\Controllers\BookController@destroy
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/BookController.php:185-192 public function destroy(Book $book): RedirectResponse
+  - 事実: routes/web.php:39 Route::middleware('auth')->group(function () {
+  - 事実: routes/web.php:42 Route::delete('/books/{book}', [BookController::class, 'destroy'])->name('books.destroy');
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: app/Http/Controllers/BookController.php:187 $this->authorize('delete', $book);
+  - 事実: app/Policies/BookPolicy.php:21-24 public function delete(User $user, Book $book): bool { return $user->id === $book->user_id && ! $book->trashed();
+  - 事実: app/Providers/AuthServiceProvider.php:16 \App\Models\Book::class => \App\Policies\BookPolicy::class,
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: 該当なし sed -n '185,192p' app/Http/Controllers/BookController.php | grep -nE 'validate|Validator|Request' → 出力0件
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/BookController.php:191 return redirect()->route('books.index')->with('success', '書籍を削除しました');
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: app/Exceptions/Handler.php:59-63 $this->renderable(function (AccessDeniedHttpException $e, Request $request) { if (! $request->is('api/*')) { return response()->view('errors.403', [], 403);
+  - 事実: app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: tests/Feature/ScreenAccessTest.php:70 $this->delete(route('books.destroy', $book))->assertRedirect('/login');
+  - 事実: app/Exceptions/Handler.php:53-57 $this->renderable(function (NotFoundHttpException $e, Request $request) { if (! $request->is('api/*')) { return response()->view('errors.404', [], 404);
+  - 事実: grep -n 'withTrashed' routes/web.php の出力は routes/web.php:36 と routes/web.php:44 の2行（routes/web.php:42 は出力に含まれない）
+  - 事実: app/Http/Kernel.php:37 \App\Http\Middleware\VerifyCsrfToken::class,
+  - 事実: app/Exceptions/Handler.php:65-69 $this->renderable(function (TokenMismatchException $e, Request $request) { if (! $request->is('api/*')) { return response()->view('errors.419', [], 419);
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: app/Http/Controllers/BookController.php:189 $book->delete();
+  - 事実: app/Models/Book.php:14 use HasFactory, SoftDeletes;
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし sed -n '143,205p' app/Http/Controllers/BookController.php | grep -nE 'Http::|Notification|notify|Log::|event\(|dispatch' → 出力0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/BookCrudTest.php:99 test_delete_authorization
+  - 事実: tests/Feature/BookCrudTest.php:114 test_deleted_book_excluded_from_listings
+  - 事実: tests/Feature/BookCrudAdvancedTest.php:167 test_other_user_cannot_delete
+  - 事実: tests/Feature/ScreenAccessTest.php:64 test_guest_cannot_perform_book_write_actions（L70）
+
+### R017 GET|HEAD /books/{book}/edit
+- 名前: books.edit
+- 処理: App\Http\Controllers\BookController@edit
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/BookController.php:158-165 public function edit(Book $book): View
+  - 事実: routes/web.php:39 Route::middleware('auth')->group(function () {
+  - 事実: routes/web.php:40 Route::get('/books/{book}/edit', [BookController::class, 'edit'])->name('books.edit');
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: app/Http/Controllers/BookController.php:160 $this->authorize('update', $book);
+  - 事実: app/Policies/BookPolicy.php:13-16 public function update(User $user, Book $book): bool { return $user->id === $book->user_id && ! $book->trashed();
+  - 事実: app/Providers/AuthServiceProvider.php:16 \App\Models\Book::class => \App\Policies\BookPolicy::class,
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: 該当なし sed -n '143,165p' app/Http/Controllers/BookController.php | grep -nE 'validate|Validator|Request' → 出力0件
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/BookController.php:164 return view('books.edit', compact('book', 'genres'));
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: app/Exceptions/Handler.php:59-63 $this->renderable(function (AccessDeniedHttpException $e, Request $request) { if (! $request->is('api/*')) { return response()->view('errors.403', [], 403);
+  - 事実: tests/Feature/WebErrorPageTest.php:38-41 $response = $this->actingAs($other)->get(route('books.edit', $book)); $response->assertStatus(403) ->assertSee('このページにアクセスする権限がありません');
+  - 事実: app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: 照合R22 GET /books/1/edit -> 302 http://localhost:8022/login / GET /books/99999/edit -> 302 http://localhost:8022/login
+  - 事実: app/Exceptions/Handler.php:53-57 $this->renderable(function (NotFoundHttpException $e, Request $request) { if (! $request->is('api/*')) { return response()->view('errors.404', [], 404);
+  - 事実: grep -n 'withTrashed' routes/web.php の出力は routes/web.php:36 と routes/web.php:44 の2行（routes/web.php:40 は出力に含まれない）
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: app/Http/Controllers/BookController.php:162 $genres = Genre::orderBy('id')->get();
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし sed -n '143,205p' app/Http/Controllers/BookController.php | grep -nE 'Http::|Notification|notify|Log::|event\(|dispatch' → 出力0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/BookCrudTest.php:88 test_edit_authorization
+  - 事実: tests/Feature/BookCrudAdvancedTest.php:143 test_other_user_cannot_view_edit
+  - 事実: tests/Feature/WebErrorPageTest.php:32 test_web_403_returns_japanese_page
+  - 事実: tests/Feature/ScreenAccessTest.php:25 test_guest_redirected_from_auth_pages（L31）
+
+### R018 POST /books/{book}/favorites
+- 名前: favorites.toggle
+- 処理: App\Http\Controllers\FavoriteController@toggle
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/FavoriteController.php:25-30 public function toggle(Book $book): RedirectResponse
+  - 事実: routes/web.php:48 Route::middleware('auth')->group(function () {
+  - 事実: routes/web.php:56 Route::post('/books/{book}/favorites', [FavoriteController::class, 'toggle'])->name('favorites.toggle');
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし grep -nE 'authorize|Gate|can\(' app/Http/Controllers/FavoriteController.php → 出力0件
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: 該当なし grep -nE 'validate|Validator|Request' app/Http/Controllers/FavoriteController.php → 出力0件
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/FavoriteController.php:29 return back();
+  - 事実: tests/Feature/FavoriteTest.php:41-42 $this->actingAs($user)->post(route('favorites.toggle', $book)) ->assertSessionMissing('success');
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: app/Exceptions/Handler.php:53-57 $this->renderable(function (NotFoundHttpException $e, Request $request) { if (! $request->is('api/*')) { return response()->view('errors.404', [], 404);
+  - 事実: grep -n 'withTrashed' routes/web.php の出力は routes/web.php:36 と routes/web.php:44 の2行（routes/web.php:56 は出力に含まれない）
+  - 事実: app/Http/Kernel.php:37 \App\Http\Middleware\VerifyCsrfToken::class,
+  - 事実: app/Exceptions/Handler.php:65-69 $this->renderable(function (TokenMismatchException $e, Request $request) { if (! $request->is('api/*')) { return response()->view('errors.419', [], 419);
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: app/Http/Controllers/FavoriteController.php:27 Auth::user()->favoriteBooks()->toggle($book);
+  - 事実: app/Models/User.php:60-62 public function favoriteBooks(): BelongsToMany { return $this->belongsToMany(Book::class, 'favorites');
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -nE 'Http::|Notification|notify|Log::|event\(|dispatch' app/Http/Controllers/FavoriteController.php → 出力0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/FavoriteTest.php:15 test_toggle_on
+  - 事実: tests/Feature/FavoriteTest.php:25 test_toggle_off
+  - 事実: tests/Feature/FavoriteTest.php:36 test_toggle_has_no_flash
+  - 事実: grep -rn 'favorites.toggle' tests の出力は tests/Feature/FavoriteTest.php:20 / :31 / :41 の3行で、3行とも $this->actingAs($user)->post(route('favorites.toggle', $book))
+
+### R019 PATCH /books/{book}/restore
+- 名前: books.restore
+- 処理: App\Http\Controllers\BookController@restore
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/BookController.php:197-204 public function restore(Book $book): RedirectResponse { $this->authorize('restore', $book); $book->restore(); return redirect()->route('books.show', $book)->with('success', '書籍を復元しました'); }
+  - 事実: routes/web.php:43-44 Route::patch('/books/{book}/restore', [BookController::class, 'restore'])->name('books.restore')->withTrashed();
+  - 事実: routes/web.php:39 Route::middleware('auth')->group(function () {
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: app/Http/Controllers/BookController.php:199 $this->authorize('restore', $book);
+  - 事実: app/Policies/BookPolicy.php:29-32 public function restore(User $user, Book $book): bool { return $user->id === $book->user_id && $book->trashed(); }
+  - 事実: app/Providers/AuthServiceProvider.php:16 \App\Models\Book::class => \App\Policies\BookPolicy::class,
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: 該当なし grep -n "validate\|Request" app/Http/Controllers/BookController.php → 出力8行（:5 :6 :13 の use 文、:23 index、:128 :131 store、:170 :175 update）。restore の 197-204 行の範囲は0件
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/BookController.php:203 return redirect()->route('books.show', $book)->with('success', '書籍を復元しました');
+  - 事実: 照合R110 app/Http/Controllers/BookController.php:203:        return redirect()->route('books.show', $book)->with('success', '書籍を復元しました');
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 未ログイン: app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: 未ログイン: tests/Feature/ScreenAccessTest.php:71 $this->patch(route('books.restore', $book))->assertRedirect('/login');
+  - 事実: 権限なし（他人の書籍・未削除の書籍）: app/Policies/BookPolicy.php:31 return $user->id === $book->user_id && $book->trashed();
+  - 事実: 権限なし: vendor/laravel/framework/src/Illuminate/Foundation/Exceptions/Handler.php:491 $e instanceof AuthorizationException && ! $e->hasStatus() => new AccessDeniedHttpException($e->getMessage(), $e),
+  - 事実: 権限なし: app/Exceptions/Handler.php:59-63 if (! $request->is('api/*')) { return response()->view('errors.403', [], 403); }
+  - 事実: 権限なし: tests/Feature/BookCrudTest.php:192 $this->actingAs($other)->patch(route('books.restore', $book))->assertForbidden();
+  - 事実: 権限なし（未削除）: tests/Feature/BookCrudTest.php:247 $this->actingAs($owner)->patch(route('books.restore', $book))->assertForbidden();
+  - 事実: 削除済み: routes/web.php:44 ->name('books.restore')->withTrashed();（ルートモデル結合で削除済みレコードも解決する）
+  - 事実: 対象なし: vendor/laravel/framework/src/Illuminate/Foundation/Exceptions/Handler.php:487 $e instanceof ModelNotFoundException => new NotFoundHttpException($e->getMessage(), $e),
+  - 事実: 対象なし: app/Exceptions/Handler.php:53-57 if (! $request->is('api/*')) { return response()->view('errors.404', [], 404); }
+  - 事実: CSRFトークン検証（TokenMismatchException）: app/Http/Kernel.php:37 \App\Http\Middleware\VerifyCsrfToken::class,
+  - 事実: CSRFトークン検証（TokenMismatchException）: app/Http/Middleware/VerifyCsrfToken.php:14-16 protected $except = [ // ];
+  - 事実: CSRFトークン検証（TokenMismatchException）: app/Exceptions/Handler.php:65-69 renderable(function (TokenMismatchException $e, Request $request) { if (! $request->is('api/*')) { return response()->view('errors.419', [], 419); } })
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: books: routes/web.php:44 ->withTrashed() により deleted_at が入った行も {book} として取得する
+  - 事実: books: app/Http/Controllers/BookController.php:201 $book->restore();
+  - 事実: books: app/Models/Book.php:14 use HasFactory, SoftDeletes;
+  - 事実: books: tests/Feature/BookCrudTest.php:179 $this->assertNull($book->fresh()->deleted_at);
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -rn "notify\|Notification::\|Http::\|Log::\|event(\|dispatch" app/Http/Controllers/BookController.php app/Http/Controllers/ReviewController.php app/Http/Controllers/FavoriteController.php app/Http/Controllers/GenreController.php app/Http/Controllers/NotificationController.php app/Http/Controllers/RankingController.php app/Http/Controllers/ReadingPlanController.php → 出力2行（app/Http/Controllers/BookController.php:73 $response = Http::timeout(5)->get('https://www.googleapis.com/books/v1/volumes', $query); と app/Http/Controllers/NotificationController.php:27 $target = DatabaseNotification::findOrFail($notification);）。app/Http/Controllers/BookController.php の該当は :73 の1件（73行は searchByIsbn 内で、restore の 197-204 行の範囲外）
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/BookCrudTest.php:168 test_restore_book（照合R91 ✓ restore book）
+  - 事実: tests/Feature/BookCrudTest.php:185 test_restore_authorization（照合R91 ✓ restore authorization）
+  - 事実: tests/Feature/BookCrudTest.php:242 test_restore_undeleted_book_forbidden（照合R91 ✓ restore undeleted book forbidden）
+  - 事実: tests/Feature/ScreenAccessTest.php:64 test_guest_cannot_perform_book_write_actions（:71 で patch books.restore。照合R91 ✓ guest cannot perform book write actions）
+
+### R020 POST /books/{book}/reviews
+- 名前: reviews.store
+- 処理: App\Http\Controllers\ReviewController@store
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/ReviewController.php:18-23 public function store(StoreReviewRequest $request, Book $book): RedirectResponse { $book->reviews()->create($request->validated() + ['user_id' => Auth::id()]); return redirect()->route('books.show', $book)->with('success', 'レビューを投稿しました'); }
+  - 事実: routes/web.php:49 Route::post('/books/{book}/reviews', [ReviewController::class, 'store'])->name('reviews.store');
+  - 事実: routes/web.php:48 Route::middleware('auth')->group(function () {
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし grep -n "authorize\|Policy" app/Http/Controllers/ReviewController.php → 出力3行（:30 edit・:42 update・:54 destroy）。store の 18-23 行の範囲は0件
+  - 事実: app/Http/Requests/StoreReviewRequest.php:12-15 public function authorize(): bool { return true; }
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: app/Http/Requests/StoreReviewRequest.php:25 'rating' => ['required', 'integer', 'between:1,5'],
+  - 事実: app/Http/Requests/StoreReviewRequest.php:26 'comment' => ['nullable', 'string', 'max:1000'],
+  - 事実: app/Http/Requests/StoreReviewRequest.php:38 'rating.required' => '評価を選択してください',
+  - 事実: app/Http/Requests/StoreReviewRequest.php:39 'rating.integer' => '評価は1〜5の範囲で選択してください',
+  - 事実: app/Http/Requests/StoreReviewRequest.php:40 'rating.between' => '評価は1〜5の範囲で選択してください',
+  - 事実: app/Http/Requests/StoreReviewRequest.php:41 'comment.max' => 'コメントは1000文字以内で入力してください',
+  - 事実: comment.string（messages() に定義なし）: lang/ja/validation.php:7 'string' => ':attributeは文字列で入力してください。',
+  - 事実: S130 App\Http\Requests\StoreReviewRequest [] => {"rating":["評価を選択してください"]}
+  - 事実: S130 App\Http\Requests\StoreReviewRequest {"rating":"a","comment":["x"]} => {"rating":["評価は1〜5の範囲で選択してください"],"comment":["commentは文字列で入力してください。"]}
+  - 事実: S130 App\Http\Requests\StoreReviewRequest {"rating":6,"comment":"あ×1001"} => {"rating":["評価は1〜5の範囲で選択してください"],"comment":["コメントは1000文字以内で入力してください"]}（入力文字列は抜粋のため回数表記）
+  - 事実: S130 App\Http\Requests\StoreReviewRequest {"rating":0} => {"rating":["評価は1〜5の範囲で選択してください"]}
+  - 事実: S130 App\Http\Requests\StoreReviewRequest {"rating":1,"comment":"あ×1000"} => []（入力文字列は抜粋のため回数表記）
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/ReviewController.php:22 return redirect()->route('books.show', $book)->with('success', 'レビューを投稿しました');
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 検証失敗: vendor/laravel/framework/src/Illuminate/Foundation/Exceptions/Handler.php:598-600 protected function invalid($request, ValidationException $exception) { return redirect($exception->redirectTo ?? url()->previous())
+  - 事実: 検証失敗: tests/Feature/ReviewTest.php:53-54 $this->actingAs($user)->post(route('reviews.store', $book), ['comment' => 'x'])->assertSessionHasErrors('rating');
+  - 事実: 未ログイン: app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: 削除済み: routes/web.php:49 の定義に ->withTrashed() なし（grep -rn "withTrashed" routes/web.php → 出力2行 :36 books.show と :44 books.restore のみ）
+  - 事実: 削除済み: app/Models/Book.php:14 use HasFactory, SoftDeletes;
+  - 事実: 対象なし: vendor/laravel/framework/src/Illuminate/Foundation/Exceptions/Handler.php:487 $e instanceof ModelNotFoundException => new NotFoundHttpException($e->getMessage(), $e),
+  - 事実: 対象なし: app/Exceptions/Handler.php:53-57 if (! $request->is('api/*')) { return response()->view('errors.404', [], 404); }
+  - 事実: CSRFトークン検証（TokenMismatchException）: app/Http/Kernel.php:37 \App\Http\Middleware\VerifyCsrfToken::class,
+  - 事実: CSRFトークン検証（TokenMismatchException）: app/Http/Middleware/VerifyCsrfToken.php:14-16 protected $except = [ // ];
+  - 事実: CSRFトークン検証（TokenMismatchException）: app/Exceptions/Handler.php:65-69 renderable(function (TokenMismatchException $e, Request $request) { if (! $request->is('api/*')) { return response()->view('errors.419', [], 419); } })
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: reviews INSERT: app/Http/Controllers/ReviewController.php:20 $book->reviews()->create($request->validated() + ['user_id' => Auth::id()]);
+  - 事実: reviews: app/Models/Review.php:14 protected $fillable = ['user_id', 'book_id', 'rating', 'comment'];
+  - 事実: reviews: database/migrations/2026_09_01_115251_create_reviews_table.php:15-20 id / user_id restrictOnDelete / book_id cascadeOnDelete / unsignedTinyInteger('rating') / text('comment')->nullable() / timestamps
+  - 事実: 該当なし grep -n "unique" database/migrations/2026_09_01_115251_create_reviews_table.php database/migrations/2026_09_15_000000_create_reading_plans_table.php → 出力0件（同一ユーザー・同一書籍の重複を拒む制約の記述なし）
+  - 事実: books: ルートモデル結合で {book} を取得（routes/web.php:49、SoftDeletes の既定スコープ app/Models/Book.php:14）
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -rn "notify\|Notification::\|Http::\|Log::\|event(\|dispatch" app/Http/Controllers/BookController.php app/Http/Controllers/ReviewController.php app/Http/Controllers/FavoriteController.php app/Http/Controllers/GenreController.php app/Http/Controllers/NotificationController.php app/Http/Controllers/RankingController.php app/Http/Controllers/ReadingPlanController.php → 出力2行（app/Http/Controllers/BookController.php:73 $response = Http::timeout(5)->get('https://www.googleapis.com/books/v1/volumes', $query); と app/Http/Controllers/NotificationController.php:27 $target = DatabaseNotification::findOrFail($notification);）。app/Http/Controllers/ReviewController.php の該当は0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/ReviewTest.php:16 test_store_review（照合R91 ✓ store review）
+  - 事実: tests/Feature/ReviewTest.php:37 test_store_review_without_comment（照合R91 ✓ store review without comment）
+  - 事実: tests/Feature/ReviewTest.php:48 test_store_review_requires_rating（照合R91 ✓ store review requires rating）
+  - 事実: 該当なし grep -rn "reviews.store\|/reviews" tests/Feature/ScreenAccessTest.php tests/Feature/ReviewLikeTest.php tests/Feature/BookCrudTest.php → 出力0件（未ログイン時・削除済み書籍への投稿を叩くテストは tests/Feature/ReviewTest.php 以外に無い。ReviewTest 内の reviews.store 呼び出しは :21 :42 :53 の3か所）
+
+### R021 GET|HEAD /favorites
+- 名前: favorites.index
+- 処理: App\Http\Controllers\FavoriteController@index
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/FavoriteController.php:15-20 public function index(): View { $books = Auth::user()->favoriteBooks()->latest('books.created_at')->paginate(10); return view('favorites.index', compact('books')); }
+  - 事実: routes/web.php:55 Route::get('/favorites', [FavoriteController::class, 'index'])->name('favorites.index');
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし grep -n "authorize" app/Http/Controllers/FavoriteController.php → 出力0件
+  - 事実: app/Http/Controllers/FavoriteController.php:17 Auth::user()->favoriteBooks()（ログインユーザーのリレーション経由でのみ取得）
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: 該当なし grep -n "Request \$request\|validate" app/Http/Controllers/FavoriteController.php app/Http/Controllers/NotificationController.php app/Http/Controllers/RankingController.php → 出力0件
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/FavoriteController.php:19 return view('favorites.index', compact('books'));
+  - 事実: app/Http/Controllers/FavoriteController.php:17 $books = ...->paginate(10);
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 未ログイン: app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: 未ログイン: 照合R22 GET /favorites -> 302 http://localhost:8022/login
+  - 事実: 該当なし grep -n "abort\|throw\|if (" app/Http/Controllers/FavoriteController.php → 出力0件
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: favorites・books: app/Http/Controllers/FavoriteController.php:17 Auth::user()->favoriteBooks()->latest('books.created_at')->paginate(10);
+  - 事実: favorites: app/Models/User.php:60-63 public function favoriteBooks(): BelongsToMany { return $this->belongsToMany(Book::class, 'favorites'); }
+  - 事実: books（削除済み）: app/Models/Book.php:14 use HasFactory, SoftDeletes;（withTrashed の指定なし）
+  - 事実: books（削除済み）: tests/Feature/FavoriteTest.php:93-94 $book->delete(); $this->actingAs($user)->get('/favorites')->assertDontSee($book->title);
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -rn "notify\|Notification::\|Http::\|Log::\|event(\|dispatch" app/Http/Controllers/BookController.php app/Http/Controllers/ReviewController.php app/Http/Controllers/FavoriteController.php app/Http/Controllers/GenreController.php app/Http/Controllers/NotificationController.php app/Http/Controllers/RankingController.php app/Http/Controllers/ReadingPlanController.php → 出力2行（app/Http/Controllers/BookController.php:73 $response = Http::timeout(5)->get('https://www.googleapis.com/books/v1/volumes', $query); と app/Http/Controllers/NotificationController.php:27 $target = DatabaseNotification::findOrFail($notification);）。app/Http/Controllers/FavoriteController.php の該当は0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/FavoriteTest.php:46 test_guest_redirected_from_favorites（照合R91 ✓ guest redirected from favorites）
+  - 事実: tests/Feature/FavoriteTest.php:52 test_index_shows_only_own_favorites（照合R91 ✓ index shows only own favorites）
+  - 事実: tests/Feature/FavoriteTest.php:69 test_index_ordered_by_created_at_desc（照合R91 ✓ index ordered by created at desc）
+  - 事実: tests/Feature/FavoriteTest.php:83 test_deleted_book_excluded_and_restored_book_reappears（照合R91 ✓ deleted book excluded and restored book reappears）
+  - 事実: tests/Feature/ScreenAccessTest.php:25 test_guest_redirected_from_auth_pages（:34 $this->get('/favorites')->assertRedirect('/login');）
+
+### R022 GET|HEAD /genres
+- 名前: genres.index
+- 処理: App\Http\Controllers\GenreController@index
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/GenreController.php:16-21 public function index(): View { $genres = Genre::withCount('books')->orderBy('id')->get(); return view('genres.index', compact('genres')); }
+  - 事実: routes/web.php:60-62 Route::middleware('auth')->group(function () { Route::resource('genres', GenreController::class); });
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし grep -n "authorize" app/Http/Controllers/GenreController.php → 出力0件
+  - 事実: 該当なし grep -rn "Genre" app/Policies app/Providers/AuthServiceProvider.php → 出力0件
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: 該当なし app/Http/Controllers/GenreController.php:16 public function index(): View（引数なし）
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/GenreController.php:20 return view('genres.index', compact('genres'));
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 未ログイン: app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: 未ログイン: 照合R22 GET /genres -> 302 http://localhost:8022/login
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: genres・book_genre・books: app/Http/Controllers/GenreController.php:18 Genre::withCount('books')->orderBy('id')->get();
+  - 事実: app/Models/Genre.php:15-18 public function books(): BelongsToMany { return $this->belongsToMany(Book::class, 'book_genre'); }
+  - 事実: books（削除済み）: tests/Feature/GenreTest.php:127-138 削除済み書籍のみ紐づくジャンルで ->assertSee('0冊');
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -rn "notify\|Notification::\|Http::\|Log::\|event(\|dispatch" app/Http/Controllers/BookController.php app/Http/Controllers/ReviewController.php app/Http/Controllers/FavoriteController.php app/Http/Controllers/GenreController.php app/Http/Controllers/NotificationController.php app/Http/Controllers/RankingController.php app/Http/Controllers/ReadingPlanController.php → 出力2行（app/Http/Controllers/BookController.php:73 $response = Http::timeout(5)->get('https://www.googleapis.com/books/v1/volumes', $query); と app/Http/Controllers/NotificationController.php:27 $target = DatabaseNotification::findOrFail($notification);）。app/Http/Controllers/GenreController.php の該当は0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/GenreTest.php:17 test_genre_screens_render（:24 get(route('genres.index'))->assertOk()->assertSee('技術書')。照合R91 ✓ genre screens render）
+  - 事実: tests/Feature/GenreTest.php:127 test_index_shows_zero_count_for_genre_with_only_trashed_books（照合R91 ✓ index shows zero count for genre with only trashed books）
+
+### R023 POST /genres
+- 名前: genres.store
+- 処理: App\Http\Controllers\GenreController@store
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/GenreController.php:34-39 public function store(StoreGenreRequest $request): RedirectResponse { Genre::create($request->validated()); return redirect()->route('genres.index')->with('success', 'ジャンルを登録しました'); }
+  - 事実: routes/web.php:61 Route::resource('genres', GenreController::class);
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし grep -n "authorize" app/Http/Controllers/GenreController.php → 出力0件
+  - 事実: app/Http/Requests/StoreGenreRequest.php:12-15 public function authorize(): bool { return true; }
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: app/Http/Requests/StoreGenreRequest.php:25 'name' => ['required', 'string', 'max:255', 'unique:genres,name'],
+  - 事実: app/Http/Requests/StoreGenreRequest.php:37 'name.required' => 'ジャンル名を入力してください',
+  - 事実: app/Http/Requests/StoreGenreRequest.php:38 'name.max' => 'ジャンル名は255文字以内で入力してください',
+  - 事実: app/Http/Requests/StoreGenreRequest.php:39 'name.unique' => 'このジャンル名は既に登録されています',
+  - 事実: name.string（messages() に定義なし）: lang/ja/validation.php:7 'string' => ':attributeは文字列で入力してください。', と lang/ja/validation.php:26 'name' => '名前',
+  - 事実: S130 App\Http\Requests\StoreGenreRequest [] => {"name":["ジャンル名を入力してください"]}
+  - 事実: S130 App\Http\Requests\StoreGenreRequest {"name":["x"]} => {"name":["名前は文字列で入力してください。"]}
+  - 事実: S130 App\Http\Requests\StoreGenreRequest {"name":"a×256"} => {"name":["ジャンル名は255文字以内で入力してください"]}（入力文字列は抜粋のため回数表記）
+  - 事実: S130 App\Http\Requests\StoreGenreRequest {"name":"小説"} => {"name":["このジャンル名は既に登録されています"]}
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/GenreController.php:38 return redirect()->route('genres.index')->with('success', 'ジャンルを登録しました');
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 検証失敗: vendor/laravel/framework/src/Illuminate/Foundation/Exceptions/Handler.php:598-600 protected function invalid($request, ValidationException $exception) { return redirect($exception->redirectTo ?? url()->previous())
+  - 事実: 検証失敗: tests/Feature/GenreTest.php:46-47 post('/genres', [])->assertSessionHasErrors('name');
+  - 事実: 検証失敗: tests/Feature/GenreTest.php:56-57 post('/genres', ['name' => '技術書'])->assertSessionHasErrors('name');
+  - 事実: 未ログイン: app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: CSRFトークン検証（TokenMismatchException）: app/Http/Kernel.php:37 \App\Http\Middleware\VerifyCsrfToken::class,
+  - 事実: CSRFトークン検証（TokenMismatchException）: app/Http/Middleware/VerifyCsrfToken.php:14-16 protected $except = [ // ];
+  - 事実: CSRFトークン検証（TokenMismatchException）: app/Exceptions/Handler.php:65-69 renderable(function (TokenMismatchException $e, Request $request) { if (! $request->is('api/*')) { return response()->view('errors.419', [], 419); } })
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: genres INSERT: app/Http/Controllers/GenreController.php:36 Genre::create($request->validated());
+  - 事実: genres: app/Models/Genre.php:13 protected $fillable = ['name'];
+  - 事実: genres（unique 検証で SELECT）: app/Http/Requests/StoreGenreRequest.php:25 'unique:genres,name'
+  - 事実: genres: database/migrations/2026_09_01_115250_create_genres_table.php:16 $table->string('name', 255)->unique();
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -rn "notify\|Notification::\|Http::\|Log::\|event(\|dispatch" app/Http/Controllers/BookController.php app/Http/Controllers/ReviewController.php app/Http/Controllers/FavoriteController.php app/Http/Controllers/GenreController.php app/Http/Controllers/NotificationController.php app/Http/Controllers/RankingController.php app/Http/Controllers/ReadingPlanController.php → 出力2行（app/Http/Controllers/BookController.php:73 $response = Http::timeout(5)->get('https://www.googleapis.com/books/v1/volumes', $query); と app/Http/Controllers/NotificationController.php:27 $target = DatabaseNotification::findOrFail($notification);）。app/Http/Controllers/GenreController.php の該当は0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/GenreTest.php:31 test_store_success（照合R91 ✓ store success）
+  - 事実: tests/Feature/GenreTest.php:42 test_store_requires_name
+  - 事実: tests/Feature/GenreTest.php:51 test_store_unique_name
+  - 事実: 該当なし（未ログインで POST /genres を叩くテスト）grep -rn "genres.show\|genres.destroy\|genres.update\|/genres" tests/Feature/ScreenAccessTest.php → 出力2行（:32 get('/genres/create')、:33 get("/genres/{$genre->id}/edit")）。POST は0件
+
+### R024 GET|HEAD /genres/create
+- 名前: genres.create
+- 処理: App\Http\Controllers\GenreController@create
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/GenreController.php:26-29 public function create(): View { return view('genres.create'); }
+  - 事実: routes/web.php:61 Route::resource('genres', GenreController::class);
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし grep -n "authorize" app/Http/Controllers/GenreController.php → 出力0件
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: 該当なし app/Http/Controllers/GenreController.php:26 public function create(): View（引数なし）
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/GenreController.php:28 return view('genres.create');（渡す変数なし）
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 未ログイン: app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: 未ログイン: 照合R22 GET /genres/create -> 302 http://localhost:8022/login
+  - 事実: 未ログイン: tests/Feature/ScreenAccessTest.php:32 $this->get('/genres/create')->assertRedirect('/login');
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: app/Http/Controllers/GenreController.php:26-29 の本体は :28 return view('genres.create'); の1文のみ（テーブルの読み書きの記述なし）
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -rn "notify\|Notification::\|Http::\|Log::\|event(\|dispatch" app/Http/Controllers/BookController.php app/Http/Controllers/ReviewController.php app/Http/Controllers/FavoriteController.php app/Http/Controllers/GenreController.php app/Http/Controllers/NotificationController.php app/Http/Controllers/RankingController.php app/Http/Controllers/ReadingPlanController.php → 出力2行（app/Http/Controllers/BookController.php:73 $response = Http::timeout(5)->get('https://www.googleapis.com/books/v1/volumes', $query); と app/Http/Controllers/NotificationController.php:27 $target = DatabaseNotification::findOrFail($notification);）。app/Http/Controllers/GenreController.php の該当は0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/GenreTest.php:17 test_genre_screens_render（:25 get(route('genres.create'))->assertOk()）
+  - 事実: tests/Feature/ScreenAccessTest.php:25 test_guest_redirected_from_auth_pages（:32）
+
+### R025 GET|HEAD /genres/{genre}
+- 名前: genres.show
+- 処理: App\Http\Controllers\GenreController@show
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/GenreController.php:44-49 public function show(Genre $genre): View { $books = $genre->books()->with('genres')->latest('books.created_at')->paginate(10); return view('genres.show', compact('genre', 'books')); }
+  - 事実: routes/web.php:61 Route::resource('genres', GenreController::class);
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし grep -n "authorize" app/Http/Controllers/GenreController.php → 出力0件
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: 該当なし app/Http/Controllers/GenreController.php:44 public function show(Genre $genre): View（Request・FormRequest の引数なし）
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/GenreController.php:48 return view('genres.show', compact('genre', 'books'));
+  - 事実: app/Http/Controllers/GenreController.php:46 $books = ...->paginate(10);
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 未ログイン: app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: 未ログイン: 照合R22 GET /genres/1 -> 302 http://localhost:8022/login
+  - 事実: 未ログイン: 照合R22 GET /genres/99999 -> 302 http://localhost:8022/login
+  - 事実: 対象なし: vendor/laravel/framework/src/Illuminate/Foundation/Exceptions/Handler.php:487 $e instanceof ModelNotFoundException => new NotFoundHttpException($e->getMessage(), $e),
+  - 事実: 対象なし: app/Exceptions/Handler.php:53-57 if (! $request->is('api/*')) { return response()->view('errors.404', [], 404); }
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: book_genre・books・genres: app/Http/Controllers/GenreController.php:46 $genre->books()->with('genres')->latest('books.created_at')->paginate(10);
+  - 事実: books（削除済み）: app/Models/Book.php:14 use HasFactory, SoftDeletes;（:46 に withTrashed の指定なし）
+  - 事実: genres: ルートモデル結合で {genre} を id で取得（GenreController.php:44 の型宣言 Genre $genre）
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -rn "notify\|Notification::\|Http::\|Log::\|event(\|dispatch" app/Http/Controllers/BookController.php app/Http/Controllers/ReviewController.php app/Http/Controllers/FavoriteController.php app/Http/Controllers/GenreController.php app/Http/Controllers/NotificationController.php app/Http/Controllers/RankingController.php app/Http/Controllers/ReadingPlanController.php → 出力2行（app/Http/Controllers/BookController.php:73 $response = Http::timeout(5)->get('https://www.googleapis.com/books/v1/volumes', $query); と app/Http/Controllers/NotificationController.php:27 $target = DatabaseNotification::findOrFail($notification);）。app/Http/Controllers/GenreController.php の該当は0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/GenreTest.php:17 test_genre_screens_render（:27 get(route('genres.show', $genre))->assertOk()->assertSee('ジャンル所属本')）
+  - 事実: tests/Feature/GenreTest.php:142 test_show_paginates_books_at_10
+
+### R026 PUT|PATCH /genres/{genre}
+- 名前: genres.update
+- 処理: App\Http\Controllers\GenreController@update
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/GenreController.php:62-67 public function update(UpdateGenreRequest $request, Genre $genre): RedirectResponse { $genre->update($request->validated()); return redirect()->route('genres.index')->with('success', 'ジャンルを更新しました'); }
+  - 事実: routes/web.php:61 Route::resource('genres', GenreController::class);
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし grep -n "authorize" app/Http/Controllers/GenreController.php → 出力0件
+  - 事実: app/Http/Requests/UpdateGenreRequest.php:13-16 public function authorize(): bool { return true; }
+  - 事実: tests/Feature/GenreTest.php:67-70 作成者以外のユーザー（$other）で put(route('genres.update', $genre), ['name' => '新名'])->assertRedirect(route('genres.index'))->assertSessionHas('success', 'ジャンルを更新しました');
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: app/Http/Requests/UpdateGenreRequest.php:26-31 'name' => [ 'required', 'string', 'max:255', Rule::unique('genres', 'name')->ignore($this->route('genre')), ],
+  - 事実: app/Http/Requests/UpdateGenreRequest.php:43 'name.required' => 'ジャンル名を入力してください',
+  - 事実: app/Http/Requests/UpdateGenreRequest.php:44 'name.max' => 'ジャンル名は255文字以内で入力してください',
+  - 事実: app/Http/Requests/UpdateGenreRequest.php:45 'name.unique' => 'このジャンル名は既に登録されています',
+  - 事実: name.string（messages() に定義なし）: lang/ja/validation.php:7 'string' => ':attributeは文字列で入力してください。', と lang/ja/validation.php:26 'name' => '名前',
+  - 事実: S130 App\Http\Requests\UpdateGenreRequest [] => {"name":["ジャンル名を入力してください"]}
+  - 事実: S130 App\Http\Requests\UpdateGenreRequest {"name":["x"]} => {"name":["名前は文字列で入力してください。"]}
+  - 事実: S130 App\Http\Requests\UpdateGenreRequest {"name":"a×256"} => {"name":["ジャンル名は255文字以内で入力してください"]}（入力文字列は抜粋のため回数表記）
+  - 事実: S130 App\Http\Requests\UpdateGenreRequest {"name":"小説"} => {"name":["このジャンル名は既に登録されています"]}（tinker 実行のためルート引数なしの状態）
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/GenreController.php:66 return redirect()->route('genres.index')->with('success', 'ジャンルを更新しました');
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 検証失敗: vendor/laravel/framework/src/Illuminate/Foundation/Exceptions/Handler.php:598-600 protected function invalid($request, ValidationException $exception) { return redirect($exception->redirectTo ?? url()->previous())
+  - 事実: 未ログイン: app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: 対象なし: vendor/laravel/framework/src/Illuminate/Foundation/Exceptions/Handler.php:487 $e instanceof ModelNotFoundException => new NotFoundHttpException($e->getMessage(), $e),
+  - 事実: 対象なし: app/Exceptions/Handler.php:53-57 if (! $request->is('api/*')) { return response()->view('errors.404', [], 404); }
+  - 事実: CSRFトークン検証（TokenMismatchException）: app/Http/Kernel.php:37 \App\Http\Middleware\VerifyCsrfToken::class,
+  - 事実: CSRFトークン検証（TokenMismatchException）: app/Http/Middleware/VerifyCsrfToken.php:14-16 protected $except = [ // ];
+  - 事実: CSRFトークン検証（TokenMismatchException）: app/Exceptions/Handler.php:65-69 renderable(function (TokenMismatchException $e, Request $request) { if (! $request->is('api/*')) { return response()->view('errors.419', [], 419); } })
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: genres UPDATE: app/Http/Controllers/GenreController.php:64 $genre->update($request->validated());
+  - 事実: genres（unique 検証で SELECT、自身の行は除外）: app/Http/Requests/UpdateGenreRequest.php:30 Rule::unique('genres', 'name')->ignore($this->route('genre')),
+  - 事実: genres: database/migrations/2026_09_01_115250_create_genres_table.php:16 $table->string('name', 255)->unique();
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -rn "notify\|Notification::\|Http::\|Log::\|event(\|dispatch" app/Http/Controllers/BookController.php app/Http/Controllers/ReviewController.php app/Http/Controllers/FavoriteController.php app/Http/Controllers/GenreController.php app/Http/Controllers/NotificationController.php app/Http/Controllers/RankingController.php app/Http/Controllers/ReadingPlanController.php → 出力2行（app/Http/Controllers/BookController.php:73 $response = Http::timeout(5)->get('https://www.googleapis.com/books/v1/volumes', $query); と app/Http/Controllers/NotificationController.php:27 $target = DatabaseNotification::findOrFail($notification);）。app/Http/Controllers/GenreController.php の該当は0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/GenreTest.php:61 test_edit_allowed_for_any_authenticated_user（:68-71）
+  - 事実: 該当なし（genres.update の検証失敗・未ログインを叩くテスト）grep -rn "genres.update\|genres.destroy" tests → 出力4行（tests/Feature/GenreTest.php:68 put genres.update、:82 :97 :108 delete genres.destroy）。genres.update は :68 の1か所のみ
+
+### R027 DELETE /genres/{genre}
+- 名前: genres.destroy
+- 処理: App\Http\Controllers\GenreController@destroy
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/GenreController.php:72-82 public function destroy(Genre $genre): RedirectResponse { if ($genre->books()->withTrashed()->exists()) { return redirect()->route('genres.index')->with('error', 'このジャンルに紐づく書籍が存在するため削除できません'); } $genre->delete(); return redirect()->route('genres.index')->with('success', 'ジャンルを削除しました'); }
+  - 事実: routes/web.php:61 Route::resource('genres', GenreController::class);
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし grep -n "authorize" app/Http/Controllers/GenreController.php → 出力0件
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: 該当なし app/Http/Controllers/GenreController.php:72 public function destroy(Genre $genre): RedirectResponse（Request・FormRequest の引数なし）
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/GenreController.php:81 return redirect()->route('genres.index')->with('success', 'ジャンルを削除しました');
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 紐づく書籍あり（削除済み書籍を含む）: app/Http/Controllers/GenreController.php:74-76 if ($genre->books()->withTrashed()->exists()) { return redirect()->route('genres.index')->with('error', 'このジャンルに紐づく書籍が存在するため削除できません');
+  - 事実: 紐づく書籍あり（DB制約）: database/migrations/2026_09_01_115252_create_book_genre_table.php:16 $table->foreignId('genre_id')->constrained()->restrictOnDelete();
+  - 事実: 未ログイン: app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: 対象なし: vendor/laravel/framework/src/Illuminate/Foundation/Exceptions/Handler.php:487 $e instanceof ModelNotFoundException => new NotFoundHttpException($e->getMessage(), $e),
+  - 事実: 対象なし: app/Exceptions/Handler.php:53-57 if (! $request->is('api/*')) { return response()->view('errors.404', [], 404); }
+  - 事実: CSRFトークン検証（TokenMismatchException）: app/Http/Kernel.php:37 \App\Http\Middleware\VerifyCsrfToken::class,
+  - 事実: CSRFトークン検証（TokenMismatchException）: app/Http/Middleware/VerifyCsrfToken.php:14-16 protected $except = [ // ];
+  - 事実: CSRFトークン検証（TokenMismatchException）: app/Exceptions/Handler.php:65-69 renderable(function (TokenMismatchException $e, Request $request) { if (! $request->is('api/*')) { return response()->view('errors.419', [], 419); } })
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: book_genre・books（削除済み含む）SELECT: app/Http/Controllers/GenreController.php:74 $genre->books()->withTrashed()->exists()
+  - 事実: genres DELETE: app/Http/Controllers/GenreController.php:79 $genre->delete();
+  - 事実: genres（物理削除）: 該当なし grep -n "SoftDeletes" app/Models/Genre.php app/Models/Review.php app/Models/ReadingPlan.php → 出力0件
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -rn "notify\|Notification::\|Http::\|Log::\|event(\|dispatch" app/Http/Controllers/BookController.php app/Http/Controllers/ReviewController.php app/Http/Controllers/FavoriteController.php app/Http/Controllers/GenreController.php app/Http/Controllers/NotificationController.php app/Http/Controllers/RankingController.php app/Http/Controllers/ReadingPlanController.php → 出力2行（app/Http/Controllers/BookController.php:73 $response = Http::timeout(5)->get('https://www.googleapis.com/books/v1/volumes', $query); と app/Http/Controllers/NotificationController.php:27 $target = DatabaseNotification::findOrFail($notification);）。app/Http/Controllers/GenreController.php の該当は0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/GenreTest.php:75 test_destroy_blocked_when_books_attached
+  - 事実: tests/Feature/GenreTest.php:89 test_destroy_blocked_when_only_trashed_book_attached
+  - 事実: tests/Feature/GenreTest.php:103 test_destroy_success_when_no_books
+  - 事実: tests/Feature/GenreTest.php:115 test_db_constraint_prevents_delete（ルートを通さず $genre->delete() を直接実行し QueryException を期待）
+
+### R028 GET|HEAD /genres/{genre}/edit
+- 名前: genres.edit
+- 処理: App\Http\Controllers\GenreController@edit
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/GenreController.php:54-57 public function edit(Genre $genre): View { return view('genres.edit', compact('genre')); }
+  - 事実: routes/web.php:61 Route::resource('genres', GenreController::class);
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし grep -n "authorize" app/Http/Controllers/GenreController.php → 出力0件
+  - 事実: tests/Feature/GenreTest.php:67 $this->actingAs($other)->get(route('genres.edit', $genre))->assertOk();
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: 該当なし app/Http/Controllers/GenreController.php:54 public function edit(Genre $genre): View（Request・FormRequest の引数なし）
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/GenreController.php:56 return view('genres.edit', compact('genre'));
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 未ログイン: app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: 未ログイン: 照合R22 GET /genres/1/edit -> 302 http://localhost:8022/login
+  - 事実: 未ログイン: 照合R22 GET /genres/99999/edit -> 302 http://localhost:8022/login
+  - 事実: 未ログイン: tests/Feature/ScreenAccessTest.php:33 $this->get("/genres/{$genre->id}/edit")->assertRedirect('/login');
+  - 事実: 対象なし: vendor/laravel/framework/src/Illuminate/Foundation/Exceptions/Handler.php:487 $e instanceof ModelNotFoundException => new NotFoundHttpException($e->getMessage(), $e),
+  - 事実: 対象なし: app/Exceptions/Handler.php:53-57 if (! $request->is('api/*')) { return response()->view('errors.404', [], 404); }
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: genres: ルートモデル結合で {genre} を id で取得（app/Http/Controllers/GenreController.php:54 の型宣言 Genre $genre）。本体は :56 の1文のみ
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -rn "notify\|Notification::\|Http::\|Log::\|event(\|dispatch" app/Http/Controllers/BookController.php app/Http/Controllers/ReviewController.php app/Http/Controllers/FavoriteController.php app/Http/Controllers/GenreController.php app/Http/Controllers/NotificationController.php app/Http/Controllers/RankingController.php app/Http/Controllers/ReadingPlanController.php → 出力2行（app/Http/Controllers/BookController.php:73 $response = Http::timeout(5)->get('https://www.googleapis.com/books/v1/volumes', $query); と app/Http/Controllers/NotificationController.php:27 $target = DatabaseNotification::findOrFail($notification);）。app/Http/Controllers/GenreController.php の該当は0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/GenreTest.php:17 test_genre_screens_render（:26 get(route('genres.edit', $genre))->assertOk()）
+  - 事実: tests/Feature/GenreTest.php:61 test_edit_allowed_for_any_authenticated_user（:67）
+  - 事実: tests/Feature/ScreenAccessTest.php:25 test_guest_redirected_from_auth_pages（:33）
+
+### R029 GET|HEAD /login
+- 名前: login
+- 処理: Laravel\Fortify\Http\Controllers\AuthenticatedSessionController@create
+- ミドルウェア: web, App\Http\Middleware\RedirectIfAuthenticated:web
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: vendor/laravel/fortify/src/Http/Controllers/AuthenticatedSessionController.php:47-50 public function create(Request $request): LoginViewResponse { return app(LoginViewResponse::class); }
+  - 事実: vendor/laravel/fortify/routes/routes.php:28-31 if ($enableViews) { Route::get(RoutePath::for('login', '/login'), [AuthenticatedSessionController::class, 'create'])->middleware(['guest:'.config('fortify.guard')])->name('login');
+  - 事実: config/fortify.php:133 'views' => true,
+  - 事実: app/Providers/FortifyServiceProvider.php:30-32 Fortify::loginView(function () { return view('auth.login'); });
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし grep -n "Gate::\|authorize" vendor/laravel/fortify/src/Http/Controllers/AuthenticatedSessionController.php → 出力0件
+  - 事実: ミドルウェア guest:web: app/Http/Middleware/RedirectIfAuthenticated.php:23-24 if (Auth::guard($guard)->check()) { return redirect(RouteServiceProvider::HOME); }
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: 該当なし vendor/laravel/fortify/src/Http/Controllers/AuthenticatedSessionController.php:47 public function create(Request $request): LoginViewResponse（FormRequest なし、検証処理の記述なし）
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Providers/FortifyServiceProvider.php:31 return view('auth.login');（渡す変数なし）
+  - 事実: 照合R22 GET /login -> 200
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: ログイン済み: app/Http/Middleware/RedirectIfAuthenticated.php:24 return redirect(RouteServiceProvider::HOME);
+  - 事実: ログイン済み: app/Providers/RouteServiceProvider.php:20 public const HOME = '/books';
+  - 事実: ログイン済み: tests/Feature/ScreenAccessTest.php:21 $this->actingAs($user)->get('/login')->assertRedirect('/books');
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: 該当なし grep -n "DB::\|::query\|->where" vendor/laravel/fortify/src/Http/Controllers/AuthenticatedSessionController.php → 出力0件
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -n "event(\|dispatch\|Log::\|notify" vendor/laravel/fortify/src/Http/Controllers/AuthenticatedSessionController.php → 出力0件
+  - 事実: app/Providers/FortifyServiceProvider.php:30-32 Fortify::loginView(function () { return view('auth.login'); });
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/ScreenAccessTest.php:16 test_authenticated_user_redirected_from_guest_pages（:21。照合R91 ✓ authenticated user redirected from guest pages）
+  - 事実: tests/Feature/ScreenAccessTest.php:49 test_intended_url_after_login（:53 未ログインで /books/create → /login）
+
+### R030 POST /login
+- 名前: login.store
+- 処理: Laravel\Fortify\Http\Controllers\AuthenticatedSessionController@store
+- ミドルウェア: web, App\Http\Middleware\RedirectIfAuthenticated:web, Illuminate\Routing\Middleware\ThrottleRequests:login
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: vendor/laravel/fortify/src/Http/Controllers/AuthenticatedSessionController.php:58-63 public function store(LoginRequest $request) { return $this->loginPipeline($request)->then(function ($request) { return app(LoginResponse::class); }); }
+  - 事実: vendor/laravel/fortify/src/Http/Controllers/AuthenticatedSessionController.php:85-91 return (new Pipeline(app()))->send($request)->through(array_filter([ config('fortify.limiters.login') ? null : EnsureLoginIsNotThrottled::class, config('fortify.lowercase_usernames') ? CanonicalizeUsername::class : null, Features::enabled(Features::twoFactorAuthentication()) ? RedirectsIfTwoFactorAuthenticatable::class : null, AttemptToAuthenticate::class, PrepareAuthenticatedSession::class, ]));
+  - 事実: vendor/laravel/fortify/routes/routes.php:38-42 Route::post(RoutePath::for('login', '/login'), [AuthenticatedSessionController::class, 'store'])->middleware(array_filter([ 'guest:'.config('fortify.guard'), $limiter ? 'throttle:'.$limiter : null, ]))->name('login.store');
+  - 事実: config/fortify.php:18 'guard' => 'web',
+  - 事実: config/fortify.php:48 'username' => 'email',
+  - 事実: config/fortify.php:63 'lowercase_usernames' => true,
+  - 事実: config/fortify.php:117-118 'limiters' => [ 'login' => 'login',
+  - 事実: config/fortify.php:146-148 'features' => [ Features::registration(), ],
+  - 事実: app/Providers/FortifyServiceProvider.php:38-42 RateLimiter::for('login', function (Request $request) { $throttleKey = Str::transliterate(Str::lower($request->input(Fortify::username())).'|'.$request->ip()); return Limit::perMinute(5)->by($throttleKey); });
+  - 事実: 該当なし grep -rn "authenticateUsing\|loginView\|pipelines\|redirects" app config/fortify.php → 出力1行（app/Providers/FortifyServiceProvider.php:30 Fortify::loginView(function () {）。authenticateUsing・pipelines・redirects は0件
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし grep -n "Gate::\|authorize" vendor/laravel/fortify/src/Http/Controllers/AuthenticatedSessionController.php → 出力0件
+  - 事実: ミドルウェア guest:web: app/Http/Middleware/RedirectIfAuthenticated.php:23-24 if (Auth::guard($guard)->check()) { return redirect(RouteServiceProvider::HOME); }
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: vendor/laravel/fortify/src/Http/Requests/LoginRequest.php:28-29 Fortify::username() => 'required|string', 'password' => 'required|string',
+  - 事実: 照合R190 array ( 'email' => 'required|string', 'password' => 'required|string', )
+  - 事実: 照合R190 {"email":["メールアドレスは必須です。"],"password":["パスワードは必須です。"]}
+  - 事実: email.required / password.required: lang/ja/validation.php:6 'required' => ':attributeは必須です。', と lang/ja/validation.php:27 'email' => 'メールアドレス', lang/ja/validation.php:28 'password' => 'パスワード',
+  - 事実: email.string / password.string: lang/ja/validation.php:7 'string' => ':attributeは文字列で入力してください。',
+  - 事実: 認証失敗: vendor/laravel/fortify/src/Actions/AttemptToAuthenticate.php:101-102 throw ValidationException::withMessages([ Fortify::username() => [trans('auth.failed')],
+  - 事実: 認証失敗: lang/ja/auth.php:6 'failed' => 'メールアドレスまたはパスワードが正しくありません',
+  - 事実: 認証失敗: 照合R190 メールアドレスまたはパスワードが正しくありません
+  - 事実: 試行回数超過（Fortify の LockoutResponse 用の文言）: lang/ja/auth.php:8 'throttle' => 'ログインの試行回数が多すぎます。:seconds 秒後にお試しください。',
+  - 事実: 試行回数超過: vendor/laravel/fortify/src/Http/Controllers/AuthenticatedSessionController.php:86 config('fortify.limiters.login') ? null : EnsureLoginIsNotThrottled::class,（config/fortify.php:118 'login' => 'login', のため EnsureLoginIsNotThrottled はパイプラインに入らない）
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: vendor/laravel/fortify/src/Http/Responses/LoginResponse.php:18-20 return $request->wantsJson() ? response()->json(['two_factor' => false]) : redirect()->intended(Fortify::redirects('login'));
+  - 事実: vendor/laravel/fortify/src/Fortify.php:94 return config('fortify.redirects.'.$redirect) ?? $default ?? config('fortify.home');
+  - 事実: config/fortify.php:76 'home' => \App\Providers\RouteServiceProvider::HOME,
+  - 事実: app/Providers/RouteServiceProvider.php:20 public const HOME = '/books';
+  - 事実: 該当なし grep -n "with(" vendor/laravel/fortify/src/Http/Responses/LoginResponse.php vendor/laravel/fortify/src/Http/Responses/LogoutResponse.php → 出力0件（フラッシュ文言なし）
+  - 事実: tests/Feature/AuthTest.php:63 $response->assertRedirect('/books');
+  - 事実: tests/Feature/ScreenAccessTest.php:60 $response->assertRedirect('/books/create');（intended URL）
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 検証失敗: vendor/laravel/framework/src/Illuminate/Foundation/Exceptions/Handler.php:598-600 protected function invalid($request, ValidationException $exception) { return redirect($exception->redirectTo ?? url()->previous())
+  - 事実: 認証失敗: tests/Feature/AuthTest.php:77-80 $response->assertSessionHasErrors('email'); $this->assertGuest(); $errors = session('errors'); $this->assertSame('メールアドレスまたはパスワードが正しくありません', $errors->first('email'));
+  - 事実: 試行回数超過: 照合R12 POST login login.store › Laravel\Fortify › AuthenticatedSessionController@store ⇂ Illuminate\Routing\Middleware\ThrottleRequests:login
+  - 事実: 試行回数超過: app/Providers/FortifyServiceProvider.php:41 return Limit::perMinute(5)->by($throttleKey);
+  - 事実: 試行回数超過: 該当なし grep -rn "ThrottleRequestsException\|429" app/Exceptions/Handler.php resources/views/errors → 出力0件
+  - 事実: 試行回数超過: ls resources/views/errors → 403.blade.php 404.blade.php 419.blade.php 500.blade.php 503.blade.php
+  - 事実: ログイン済み: app/Http/Middleware/RedirectIfAuthenticated.php:24 return redirect(RouteServiceProvider::HOME);
+  - 事実: CSRFトークン検証（TokenMismatchException）: app/Http/Kernel.php:37 \App\Http\Middleware\VerifyCsrfToken::class,
+  - 事実: CSRFトークン検証（TokenMismatchException）: app/Http/Middleware/VerifyCsrfToken.php:14-16 protected $except = [ // ];
+  - 事実: CSRFトークン検証（TokenMismatchException）: app/Exceptions/Handler.php:65-69 renderable(function (TokenMismatchException $e, Request $request) { if (! $request->is('api/*')) { return response()->view('errors.419', [], 419); } })
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: users SELECT: vendor/laravel/fortify/src/Actions/AttemptToAuthenticate.php:55-57 if ($this->guard->attempt( $request->only(Fortify::username(), 'password'), $request->boolean('remember')) )
+  - 事実: セッション: vendor/laravel/fortify/src/Actions/PrepareAuthenticatedSession.php:37 $request->session()->regenerate();
+  - 事実: users: app/Models/User.php:45-48 protected $casts = [ 'email_verified_at' => 'datetime', 'password' => 'hashed', ];
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 認証失敗時のイベント: vendor/laravel/fortify/src/Actions/AttemptToAuthenticate.php:114 event(new Failed($this->guard?->name ?? config('fortify.guard'), null, [
+  - 事実: リスナー登録: app/Providers/EventServiceProvider.php:17-21 protected $listen = [ Registered::class => [ SendEmailVerificationNotification::class, ], ];
+  - 事実: app/Providers/EventServiceProvider.php:34-37 public function shouldDiscoverEvents(): bool { return false; }
+  - 事実: レート制限の記録: 照合R12 ⇂ Illuminate\Routing\Middleware\ThrottleRequests:login と app/Providers/FortifyServiceProvider.php:38-42 RateLimiter::for('login', ...)
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/AuthTest.php:54 test_login_success（照合R91 ✓ login success）
+  - 事実: tests/Feature/AuthTest.php:68 test_login_failure_message（照合R91 ✓ login failure message）
+  - 事実: tests/Feature/ScreenAccessTest.php:49 test_intended_url_after_login（照合R91 ✓ intended url after login）
+  - 事実: 該当なし grep -rn "throttle\|429\|tooManyAttempts" tests → 出力0件
+
+### R031 POST /logout
+- 名前: logout
+- 処理: Laravel\Fortify\Http\Controllers\AuthenticatedSessionController@destroy
+- ミドルウェア: web, App\Http\Middleware\Authenticate:web
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: vendor/laravel/fortify/src/Http/Controllers/AuthenticatedSessionController.php:100-110 public function destroy(Request $request): LogoutResponse { $this->guard->logout(); if ($request->hasSession()) { $request->session()->invalidate(); $request->session()->regenerateToken(); } return app(LogoutResponse::class); }
+  - 事実: vendor/laravel/fortify/routes/routes.php:44-46 Route::post(RoutePath::for('logout', '/logout'), [AuthenticatedSessionController::class, 'destroy'])->middleware([config('fortify.auth_middleware', 'auth').':'.config('fortify.guard')])->name('logout');
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし grep -n "Gate::\|authorize" vendor/laravel/fortify/src/Http/Controllers/AuthenticatedSessionController.php → 出力0件
+  - 事実: ミドルウェア: 照合R12 POST logout logout › Laravel\Fortify › AuthenticatedSessionController@destroy ⇂ web ⇂ App\Http\Middleware\Authenticate:web
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: 該当なし vendor/laravel/fortify/src/Http/Controllers/AuthenticatedSessionController.php:100 public function destroy(Request $request): LogoutResponse（FormRequest なし、検証処理の記述なし）
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: vendor/laravel/fortify/src/Http/Responses/LogoutResponse.php:19-21 return $request->wantsJson() ? new JsonResponse('', 204) : redirect(Fortify::redirects('logout', '/'));
+  - 事実: 該当なし grep -n "redirects" config/fortify.php → 出力0件
+  - 事実: 該当なし grep -n "with(" vendor/laravel/fortify/src/Http/Responses/LoginResponse.php vendor/laravel/fortify/src/Http/Responses/LogoutResponse.php → 出力0件（フラッシュ文言なし）
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 未ログイン: app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: CSRFトークン検証（TokenMismatchException）: app/Http/Kernel.php:37 \App\Http\Middleware\VerifyCsrfToken::class,
+  - 事実: CSRFトークン検証（TokenMismatchException）: app/Http/Middleware/VerifyCsrfToken.php:14-16 protected $except = [ // ];
+  - 事実: CSRFトークン検証（TokenMismatchException）: app/Exceptions/Handler.php:65-69 renderable(function (TokenMismatchException $e, Request $request) { if (! $request->is('api/*')) { return response()->view('errors.419', [], 419); } })
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: セッション: vendor/laravel/fortify/src/Http/Controllers/AuthenticatedSessionController.php:105-106 $request->session()->invalidate(); $request->session()->regenerateToken();
+  - 事実: users.remember_token: vendor/laravel/framework/src/Illuminate/Auth/SessionGuard.php:575-576 if (! is_null($this->user) && ! empty($user->getRememberToken())) { $this->cycleRememberToken($user); }
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: ログアウトイベント: vendor/laravel/framework/src/Illuminate/Auth/SessionGuard.php:583 $this->events->dispatch(new Logout($this->name, $user));
+  - 事実: リスナー登録: app/Providers/EventServiceProvider.php:17-21 protected $listen = [ Registered::class => [ SendEmailVerificationNotification::class, ], ];
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/AuthTest.php:84 test_logout_requires_login_again（:88 $this->actingAs($user)->post('/logout'); :89 $this->assertGuest();。照合R91 ✓ logout requires login again）
+  - 事実: grep -rn "logout" tests → 出力2行（tests/Feature/AuthTest.php:84 と :88）
+
+### R032 GET|HEAD /notifications
+- 名前: notifications.index
+- 処理: App\Http\Controllers\NotificationController@index
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/NotificationController.php:15-20 public function index(): View { $notifications = Auth::user()->notifications()->latest()->get(); return view('notifications.index', compact('notifications')); }
+  - 事実: routes/web.php:82 Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし grep -n "authorize" app/Http/Controllers/NotificationController.php → 出力0件
+  - 事実: app/Http/Controllers/NotificationController.php:17 Auth::user()->notifications()（ログインユーザーのリレーション経由でのみ取得）
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: 該当なし grep -n "Request \$request\|validate" app/Http/Controllers/FavoriteController.php app/Http/Controllers/NotificationController.php app/Http/Controllers/RankingController.php → 出力0件
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/NotificationController.php:19 return view('notifications.index', compact('notifications'));
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 未ログイン: app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: 未ログイン: 照合R22 GET /notifications -> 302 http://localhost:8022/login
+  - 事実: 未ログイン: tests/Feature/NotificationTest.php:96 $this->get('/notifications')->assertRedirect('/login');
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: notifications SELECT: app/Http/Controllers/NotificationController.php:17 Auth::user()->notifications()->latest()->get();
+  - 事実: vendor/laravel/framework/src/Illuminate/Notifications/HasDatabaseNotifications.php:14 return $this->morphMany(DatabaseNotification::class, 'notifiable')->latest();
+  - 事実: 該当なし grep -rn "paginate\|limit(" app/Http/Controllers/NotificationController.php app/Http/Controllers/ReadingPlanController.php → 出力0件（件数の上限なし）
+  - 事実: notifications: database/migrations/2026_09_15_113741_create_notifications_table.php:15-20 uuid('id')->primary() / string('type') / morphs('notifiable') / text('data') / timestamp('read_at')->nullable() / timestamps
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -rn "notify\|Notification::\|Http::\|Log::\|event(\|dispatch" app/Http/Controllers/BookController.php app/Http/Controllers/ReviewController.php app/Http/Controllers/FavoriteController.php app/Http/Controllers/GenreController.php app/Http/Controllers/NotificationController.php app/Http/Controllers/RankingController.php app/Http/Controllers/ReadingPlanController.php → 出力2行（app/Http/Controllers/BookController.php:73 $response = Http::timeout(5)->get('https://www.googleapis.com/books/v1/volumes', $query); と app/Http/Controllers/NotificationController.php:27 $target = DatabaseNotification::findOrFail($notification);）。app/Http/Controllers/NotificationController.php の該当は :27 の1件（27行は read メソッド内で、index の 15-20 行の範囲外）
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/NotificationTest.php:39 test_index_shows_own_notifications_newest_first（照合R91 ✓ index shows own notifications newest first）
+  - 事実: tests/Feature/NotificationTest.php:94 test_guest_redirected_from_notifications（照合R91 ✓ guest redirected from notifications）
+
+### R033 POST /notifications/{notification}/read
+- 名前: notifications.read
+- 処理: App\Http\Controllers\NotificationController@read
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/NotificationController.php:25-36 public function read(string $notification): RedirectResponse { $target = DatabaseNotification::findOrFail($notification); if ((int) $target->notifiable_id !== Auth::id()) { abort(403); } $target->markAsRead(); return back(); }
+  - 事実: routes/web.php:83 Route::post('/notifications/{notification}/read', [NotificationController::class, 'read'])->name('notifications.read');
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: app/Http/Controllers/NotificationController.php:29-31 if ((int) $target->notifiable_id !== Auth::id()) { abort(403); }
+  - 事実: 該当なし grep -n "authorize" app/Http/Controllers/NotificationController.php → 出力0件
+  - 事実: 該当なし grep -n "notifiable_type" app/Http/Controllers/NotificationController.php → 出力0件
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: 該当なし app/Http/Controllers/NotificationController.php:25 public function read(string $notification): RedirectResponse（Request・FormRequest の引数なし）
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/NotificationController.php:35 return back();
+  - 事実: 該当なし grep -n "with(" app/Http/Controllers/NotificationController.php app/Http/Controllers/FavoriteController.php → 出力0件（フラッシュ文言なし）
+  - 事実: tests/Feature/NotificationTest.php:71-74 ->from('/notifications')->post("/notifications/{$notification->id}/read")->assertRedirect('/notifications');
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 権限なし（他人の通知）: app/Http/Controllers/NotificationController.php:30 abort(403);
+  - 事実: 権限なし: resources/views/errors/403.blade.php:11 <h1 class="text-2xl font-bold text-gray-800 mb-4">このページにアクセスする権限がありません</h1>
+  - 事実: 権限なし: tests/Feature/NotificationTest.php:86-88 $this->actingAs($other)->post("/notifications/{$notification->id}/read")->assertForbidden();
+  - 事実: 対象なし: app/Http/Controllers/NotificationController.php:27 $target = DatabaseNotification::findOrFail($notification);
+  - 事実: 対象なし: vendor/laravel/framework/src/Illuminate/Foundation/Exceptions/Handler.php:487 $e instanceof ModelNotFoundException => new NotFoundHttpException($e->getMessage(), $e),
+  - 事実: 対象なし: app/Exceptions/Handler.php:53-57 if (! $request->is('api/*')) { return response()->view('errors.404', [], 404); }
+  - 事実: 未ログイン: app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: CSRFトークン検証（TokenMismatchException）: app/Http/Kernel.php:37 \App\Http\Middleware\VerifyCsrfToken::class,
+  - 事実: CSRFトークン検証（TokenMismatchException）: app/Http/Middleware/VerifyCsrfToken.php:14-16 protected $except = [ // ];
+  - 事実: CSRFトークン検証（TokenMismatchException）: app/Exceptions/Handler.php:65-69 renderable(function (TokenMismatchException $e, Request $request) { if (! $request->is('api/*')) { return response()->view('errors.419', [], 419); } })
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: notifications SELECT: app/Http/Controllers/NotificationController.php:27 DatabaseNotification::findOrFail($notification);
+  - 事実: notifications UPDATE: app/Http/Controllers/NotificationController.php:33 $target->markAsRead();
+  - 事実: vendor/laravel/framework/src/Illuminate/Notifications/DatabaseNotification.php:63-66 public function markAsRead() { if (is_null($this->read_at)) { $this->forceFill(['read_at' => $this->freshTimestamp()])->save();
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -rn "notify\|Notification::\|Http::\|Log::\|event(\|dispatch" app/Http/Controllers/BookController.php app/Http/Controllers/ReviewController.php app/Http/Controllers/FavoriteController.php app/Http/Controllers/GenreController.php app/Http/Controllers/NotificationController.php app/Http/Controllers/RankingController.php app/Http/Controllers/ReadingPlanController.php → 出力2行（app/Http/Controllers/BookController.php:73 $response = Http::timeout(5)->get('https://www.googleapis.com/books/v1/volumes', $query); と app/Http/Controllers/NotificationController.php:27 $target = DatabaseNotification::findOrFail($notification);）。app/Http/Controllers/NotificationController.php の該当は :27 の1件（27行は通知の取得で、送信・外部API・ログではない）
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/NotificationTest.php:64 test_owner_can_mark_notification_read（照合R91 ✓ owner can mark notification read）
+  - 事実: tests/Feature/NotificationTest.php:80 test_other_user_cannot_mark_notification_read（照合R91 ✓ other user cannot mark notification read）
+
+### R034 GET|HEAD /ranking
+- 名前: ranking.index
+- 処理: App\Http\Controllers\RankingController@index
+- ミドルウェア: web
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/RankingController.php:13-24 public function index(): View { $rankedBooks = Book::withAvg('reviews', 'rating')->withCount('reviews')->whereHas('reviews')->orderByDesc('reviews_avg_rating')->orderBy('id')->limit(10)->get(); return view('ranking.index', compact('rankedBooks')); }
+  - 事実: routes/web.php:87 Route::get('/ranking', [RankingController::class, 'index'])->name('ranking.index');（auth ミドルウェアのグループ外）
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし grep -n "authorize" app/Http/Controllers/RankingController.php → 出力0件
+  - 事実: 照合R12 GET|HEAD ranking ............ ranking.index › RankingController@index ⇂ web
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: 該当なし grep -n "Request \$request\|validate" app/Http/Controllers/FavoriteController.php app/Http/Controllers/NotificationController.php app/Http/Controllers/RankingController.php → 出力0件
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/RankingController.php:23 return view('ranking.index', compact('rankedBooks'));
+  - 事実: 照合R22 GET /ranking -> 200
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 該当なし grep -n "abort\|throw\|if (" app/Http/Controllers/RankingController.php → 出力0件
+  - 事実: 未ログイン: 照合R22 GET /ranking -> 200（未ログインでも表示）
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: books・reviews SELECT: app/Http/Controllers/RankingController.php:15-21 Book::withAvg('reviews', 'rating')->withCount('reviews')->whereHas('reviews')->orderByDesc('reviews_avg_rating')->orderBy('id')->limit(10)->get();
+  - 事実: books（削除済み）: app/Models/Book.php:14 use HasFactory, SoftDeletes;（:15-21 に withTrashed の指定なし）
+  - 事実: books（削除済み）: tests/Feature/RankingTest.php:49-53 $book->delete(); $this->get('/ranking')->assertOk()->assertDontSee('削除される本');
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -rn "notify\|Notification::\|Http::\|Log::\|event(\|dispatch" app/Http/Controllers/BookController.php app/Http/Controllers/ReviewController.php app/Http/Controllers/FavoriteController.php app/Http/Controllers/GenreController.php app/Http/Controllers/NotificationController.php app/Http/Controllers/RankingController.php app/Http/Controllers/ReadingPlanController.php → 出力2行（app/Http/Controllers/BookController.php:73 $response = Http::timeout(5)->get('https://www.googleapis.com/books/v1/volumes', $query); と app/Http/Controllers/NotificationController.php:27 $target = DatabaseNotification::findOrFail($notification);）。app/Http/Controllers/RankingController.php の該当は0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/RankingTest.php:15 test_ranking_ordered_by_avg_rating_desc（照合R91 ✓ ranking ordered by avg rating desc）
+  - 事実: tests/Feature/RankingTest.php:32 test_ranking_excludes_books_without_reviews（照合R91 ✓ ranking excludes books without reviews）
+  - 事実: tests/Feature/RankingTest.php:45 test_ranking_excludes_deleted_books（照合R91 ✓ ranking excludes deleted books）
+  - 事実: tests/Feature/RankingTest.php:57 test_ranking_public（照合R91 ✓ ranking public）
+  - 事実: tests/Feature/ScreenAccessTest.php:38 test_public_pages_accessible_by_guest（:44 $this->get('/ranking')->assertOk();）
+  - 事実: tests/Feature/BookCrudTest.php:114 test_deleted_book_excluded_from_listings（:125 $this->get('/ranking')->assertDontSee($book->title);）
+  - 事実: tests/Feature/BookCrudTest.php:168 test_restore_book（:181 $this->get('/ranking')->assertSee($book->title);）
+
+### R035 GET|HEAD /reading-plans
+- 名前: reading-plans.index
+- 処理: App\Http\Controllers\ReadingPlanController@index
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/ReadingPlanController.php:20-31 public function index(Request $request): View { $currentStatus = $request->query('status'); $readingPlans = ReadingPlan::where('user_id', Auth::id())->with('book')->when(filled($currentStatus), fn ($query) => $query->where('status', $currentStatus))->latest()->get(); return view('reading-plans.index', compact('readingPlans', 'currentStatus')); }
+  - 事実: routes/web.php:71 Route::get('/reading-plans', [ReadingPlanController::class, 'index'])->name('reading-plans.index');
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: app/Http/Controllers/ReadingPlanController.php:24 ReadingPlan::where('user_id', Auth::id())
+  - 事実: 該当なし（index での Policy 呼び出し）照合R112 の ReadingPlanController の authorize は :64 :74 :87 :103 の4行のみ（index の 20-31 行の範囲は0件）
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: 該当なし app/Http/Controllers/ReadingPlanController.php:22 $currentStatus = $request->query('status');（値の検証なしで :26 ->where('status', $currentStatus) に渡す）
+  - 事実: tests/Feature/ReadingPlanTest.php:296-298 get('/reading-plans?status=not_a_real_status'); assertOk(); assertCount(0, $response->viewData('readingPlans'));
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/ReadingPlanController.php:30 return view('reading-plans.index', compact('readingPlans', 'currentStatus'));
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 未ログイン: app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: 未ログイン: 照合R22 GET /reading-plans -> 302 http://localhost:8022/login
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: reading_plans SELECT: app/Http/Controllers/ReadingPlanController.php:24-28 ReadingPlan::where('user_id', Auth::id())->with('book')->when(filled($currentStatus), fn ($query) => $query->where('status', $currentStatus))->latest()->get();
+  - 事実: 該当なし grep -rn "paginate\|limit(" app/Http/Controllers/NotificationController.php app/Http/Controllers/ReadingPlanController.php → 出力0件（件数の上限なし）
+  - 事実: books（削除済み）: app/Models/ReadingPlan.php:38-42 public function book(): BelongsTo { return $this->belongsTo(Book::class)->withTrashed(); }
+  - 事実: status の値: app/Enums/ReadingPlanStatus.php:7-9 case InProgress = 'in_progress'; case Completed = 'completed'; case Expired = 'expired';
+  - 事実: app/Models/ReadingPlan.php:27-31 'status' => ReadingPlanStatus::class, 'target_date' => 'date', 'completed_at' => 'datetime',
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -rn "notify\|Notification::\|Http::\|Log::\|event(\|dispatch" app/Http/Controllers/BookController.php app/Http/Controllers/ReviewController.php app/Http/Controllers/FavoriteController.php app/Http/Controllers/GenreController.php app/Http/Controllers/NotificationController.php app/Http/Controllers/RankingController.php app/Http/Controllers/ReadingPlanController.php → 出力2行（app/Http/Controllers/BookController.php:73 $response = Http::timeout(5)->get('https://www.googleapis.com/books/v1/volumes', $query); と app/Http/Controllers/NotificationController.php:27 $target = DatabaseNotification::findOrFail($notification);）。app/Http/Controllers/ReadingPlanController.php の該当は0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/ReadingPlanTest.php:262 test_index_without_status_shows_all_own_plans（照合R91 ✓ index without status shows all own plans）
+  - 事実: tests/Feature/ReadingPlanTest.php:277 test_index_with_valid_status_filters（照合R91 ✓ index with valid status filters）
+  - 事実: tests/Feature/ReadingPlanTest.php:291 test_index_with_undefined_status_returns_empty（照合R91 ✓ index with undefined status returns empty）
+
+### R036 POST /reading-plans
+- 名前: reading-plans.store
+- 処理: App\Http\Controllers\ReadingPlanController@store
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/ReadingPlanController.php:46-57 public function store(ReadingPlanStoreRequest $request): RedirectResponse { ReadingPlan::create([ 'user_id' => Auth::id(), 'book_id' => $request->validated('book_id'), 'target_date' => $request->validated('target_date'), 'status' => ReadingPlanStatus::InProgress, ]); return redirect()->route('reading-plans.index')->with('success', '読書計画を登録しました'); }
+  - 事実: routes/web.php:73 Route::post('/reading-plans', [ReadingPlanController::class, 'store'])->name('reading-plans.store');
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし（store での Policy 呼び出し）照合R112 の ReadingPlanController の authorize は :64 :74 :87 :103 の4行のみ（store の 46-57 行の範囲は0件）
+  - 事実: app/Http/Requests/ReadingPlanStoreRequest.php:16-19 public function authorize(): bool { return true; }
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: app/Http/Requests/ReadingPlanStoreRequest.php:29 'book_id' => ['required', 'exists:books,id'],
+  - 事実: app/Http/Requests/ReadingPlanStoreRequest.php:30 'target_date' => ['required', 'date', 'after_or_equal:today'],
+  - 事実: app/Http/Requests/ReadingPlanStoreRequest.php:42 'book_id.required' => '書籍を選択してください',
+  - 事実: app/Http/Requests/ReadingPlanStoreRequest.php:43 'book_id.exists' => '選択された書籍が存在しません',
+  - 事実: app/Http/Requests/ReadingPlanStoreRequest.php:44 'target_date.required' => '期日を入力してください',
+  - 事実: app/Http/Requests/ReadingPlanStoreRequest.php:45 'target_date.after_or_equal' => '期日は本日以降の日付で指定してください',
+  - 事実: target_date.date（messages() に定義なし）: lang/ja/validation.php:10 'date' => ':attributeは正しい日付形式で入力してください。',（lang/ja/validation.php:25-39 attributes に target_date の定義なし）
+  - 事実: 進行中の重複: app/Http/Requests/ReadingPlanStoreRequest.php:52-63 withValidator: $validator->after(... ReadingPlan::where('user_id', Auth::id())->where('book_id', $this->input('book_id'))->where('status', ReadingPlanStatus::InProgress)->exists(); if ($duplicate) { $validator->errors()->add('book_id', 'この書籍は既に読書計画に登録されています'); }
+  - 事実: 該当なし grep -rn "exists:books\|withTrashed\|whereNull" app/Http/Requests/ReadingPlanStoreRequest.php → 出力1行（:29 'book_id' => ['required', 'exists:books,id'],）。withTrashed・whereNull は0件
+  - 事実: S130 App\Http\Requests\ReadingPlanStoreRequest [] => {"book_id":["書籍を選択してください"],"target_date":["期日を入力してください"]}
+  - 事実: S130 App\Http\Requests\ReadingPlanStoreRequest {"book_id":99999,"target_date":"abc"} => {"book_id":["選択された書籍が存在しません"],"target_date":["target dateは正しい日付形式で入力してください。","期日は本日以降の日付で指定してください"]}
+  - 事実: S130 App\Http\Requests\ReadingPlanStoreRequest {"book_id":1,"target_date":"2000-01-01"} => {"target_date":["期日は本日以降の日付で指定してください"]}
+  - 事実: S130 は rules() と messages() だけで Validator::make を実行しており、withValidator（:52-63）の重複チェックは含まない
+  - 事実: 進行中の重複: tests/Feature/ReadingPlanTest.php:114 $response->assertSessionHasErrors(['book_id' => 'この書籍は既に読書計画に登録されています']);
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/ReadingPlanController.php:55-56 return redirect()->route('reading-plans.index')->with('success', '読書計画を登録しました');
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 検証失敗: vendor/laravel/framework/src/Illuminate/Foundation/Exceptions/Handler.php:598-600 protected function invalid($request, ValidationException $exception) { return redirect($exception->redirectTo ?? url()->previous())
+  - 事実: 未ログイン: app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: CSRFトークン検証（TokenMismatchException）: app/Http/Kernel.php:37 \App\Http\Middleware\VerifyCsrfToken::class,
+  - 事実: CSRFトークン検証（TokenMismatchException）: app/Http/Middleware/VerifyCsrfToken.php:14-16 protected $except = [ // ];
+  - 事実: CSRFトークン検証（TokenMismatchException）: app/Exceptions/Handler.php:65-69 renderable(function (TokenMismatchException $e, Request $request) { if (! $request->is('api/*')) { return response()->view('errors.419', [], 419); } })
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: reading_plans INSERT: app/Http/Controllers/ReadingPlanController.php:48-53 ReadingPlan::create([ 'user_id' => Auth::id(), 'book_id' => $request->validated('book_id'), 'target_date' => $request->validated('target_date'), 'status' => ReadingPlanStatus::InProgress, ]);
+  - 事実: app/Models/ReadingPlan.php:14-20 protected $fillable = [ 'user_id', 'book_id', 'target_date', 'status', 'completed_at', ];
+  - 事実: reading_plans SELECT（重複チェック）: app/Http/Requests/ReadingPlanStoreRequest.php:55-58 ReadingPlan::where('user_id', Auth::id())->where('book_id', $this->input('book_id'))->where('status', ReadingPlanStatus::InProgress)->exists();
+  - 事実: books SELECT（exists 検証）: app/Http/Requests/ReadingPlanStoreRequest.php:29 'exists:books,id'
+  - 事実: reading_plans: database/migrations/2026_09_15_000000_create_reading_plans_table.php:15-21 id / user_id restrictOnDelete / book_id cascadeOnDelete / date('target_date') / string('status', 20) / timestamp('completed_at')->nullable() / timestamps
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -rn "notify\|Notification::\|Http::\|Log::\|event(\|dispatch" app/Http/Controllers/BookController.php app/Http/Controllers/ReviewController.php app/Http/Controllers/FavoriteController.php app/Http/Controllers/GenreController.php app/Http/Controllers/NotificationController.php app/Http/Controllers/RankingController.php app/Http/Controllers/ReadingPlanController.php → 出力2行（app/Http/Controllers/BookController.php:73 $response = Http::timeout(5)->get('https://www.googleapis.com/books/v1/volumes', $query); と app/Http/Controllers/NotificationController.php:27 $target = DatabaseNotification::findOrFail($notification);）。app/Http/Controllers/ReadingPlanController.php の該当は0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/ReadingPlanTest.php:36 test_store_success（照合R91 ✓ store success）
+  - 事実: tests/Feature/ReadingPlanTest.php:103 test_duplicate_in_progress_plan_rejected（照合R91 ✓ duplicate in progress plan rejected）
+  - 事実: tests/Feature/ReadingPlanTest.php:121 test_can_create_when_existing_plan_completed（照合R91 ✓ can create when existing plan completed）
+  - 事実: tests/Feature/ReadingPlanTest.php:138 test_can_create_when_existing_plan_expired（照合R91 ✓ can create when existing plan expired）
+  - 事実: 該当なし（book_id・target_date の必須／存在／日付形式／本日以降の検証を叩くテスト）grep -rn "assertSessionHasErrors" tests/Feature/ReadingPlanTest.php → 出力1行（:114 の重複エラーのみ）
+
+### R037 GET|HEAD /reading-plans/create
+- 名前: reading-plans.create
+- 処理: App\Http\Controllers\ReadingPlanController@create
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/ReadingPlanController.php:36-41 public function create(): View { $books = Book::orderBy('title')->get(); return view('reading-plans.create', compact('books')); }
+  - 事実: routes/web.php:72 Route::get('/reading-plans/create', [ReadingPlanController::class, 'create'])->name('reading-plans.create');
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし（Policy・Gate） grep -n "authorize\|Gate::" app/Http/Controllers/ReadingPlanController.php → 出力は 64・74・87・103 行の4件のみで、create の行範囲 36-41 には0件
+  - 事実: ログイン要求のみ: routes/web.php:70 Route::middleware('auth')->group(function () {
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: app/Http/Controllers/ReadingPlanController.php:36 public function create(): View（引数なし・FormRequest 不使用）
+  - 事実: 該当なし grep -n "validate(" app/Http/Controllers/ReadingPlanController.php → 出力0件
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/ReadingPlanController.php:40 return view('reading-plans.create', compact('books'));
+  - 事実: 渡す変数 $books: app/Http/Controllers/ReadingPlanController.php:38 $books = Book::orderBy('title')->get();
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 未ログイン: routes/web.php:70 Route::middleware('auth') → app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: 未ログイン: 照合R22 GET /reading-plans/create -> 302 http://localhost:8022/login
+  - 事実: 権限なし・対象なし・削除済み: 該当なし routes/web.php:72 の URI '/reading-plans/create' にルートパラメータなし。grep -n "authorize" app/Http/Controllers/ReadingPlanController.php の出力に 36-41 行の範囲は0件
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: books 読み取り: app/Http/Controllers/ReadingPlanController.php:38 $books = Book::orderBy('title')->get();（並び順 title 昇順・件数制限なし・条件なし）
+  - 事実: 削除済みの扱い: app/Models/Book.php:14 use HasFactory, SoftDeletes;。grep -n "withTrashed" app/Http/Controllers/ReadingPlanController.php → 出力0件
+  - 事実: 書き込み: 該当なし（create メソッド 36-41 行は get() と view() のみ）
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -rn "Log::\|Notification::\|->notify(\|Http::\|event(\|dispatch(" app/Http/Controllers/ReadingPlanController.php → 出力0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/ReadingPlanTest.php:302-310 test_create_form_displayed ->get('/reading-plans/create') ->assertOk() ->assertSee('選択肢に出る本');
+  - 事実: 未ログイン時のテスト: grep -rn "reading-plans/create" tests → 出力は tests/Feature/ReadingPlanTest.php:307 $this->actingAs($user)->get('/reading-plans/create') の1件のみ
+
+### R038 PUT /reading-plans/{plan}
+- 名前: reading-plans.update
+- 処理: App\Http\Controllers\ReadingPlanController@update
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/ReadingPlanController.php:72-80 public function update(ReadingPlanUpdateRequest $request, ReadingPlan $plan): RedirectResponse
+  - 事実: routes/web.php:75 Route::put('/reading-plans/{plan}', [ReadingPlanController::class, 'update'])->name('reading-plans.update');
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: app/Http/Controllers/ReadingPlanController.php:74 $this->authorize('update', $plan);
+  - 事実: app/Policies/ReadingPlanPolicy.php:14-18 public function update(User $user, ReadingPlan $plan): bool { return $user->id === $plan->user_id && $plan->status !== ReadingPlanStatus::Completed; }
+  - 事実: Policy の対応付け: app/Providers/AuthServiceProvider.php:15-18 の $policies は Book と Review の2件のみ（ReadingPlan の記載なし）。S150 policy ReadingPlan=App\Policies\ReadingPlanPolicy
+  - 事実: app/Http/Requests/ReadingPlanUpdateRequest.php:14 return true;（FormRequest の authorize）
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: app/Http/Requests/ReadingPlanUpdateRequest.php:25 'target_date' => ['required', 'date', 'after_or_equal:today'],
+  - 事実: app/Http/Requests/ReadingPlanUpdateRequest.php:37 'target_date.required' => '期日を入力してください',
+  - 事実: app/Http/Requests/ReadingPlanUpdateRequest.php:38 'target_date.after_or_equal' => '期日は本日以降の日付で指定してください',
+  - 事実: target_date.date: messages() に定義なし。lang/ja/validation.php:10 'date' => ':attributeは正しい日付形式で入力してください。',
+  - 事実: S151 RPUpdate {} => {"target_date":["期日を入力してください"]}
+  - 事実: S151 RPUpdate target_date=abc => {"target_date":["target dateは正しい日付形式で入力してください。","期日は本日以降の日付で指定してください"]}
+  - 事実: S151 RPUpdate target_date=2000-01-01 => {"target_date":["期日は本日以降の日付で指定してください"]}
+  - 事実: 更新に使う入力: app/Http/Controllers/ReadingPlanController.php:76 $plan->update(['target_date' => $request->validated('target_date')]);（book_id・status は受け取らない）
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/ReadingPlanController.php:78-79 return redirect()->route('reading-plans.index') ->with('success', '読書計画を更新しました');
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 検証失敗: 該当なし（アプリ側の上書き） grep -rn "failedValidation" app/Http/Requests/ReadingPlanUpdateRequest.php → 出力0件（FormRequest 標準の処理）
+  - 事実: 未ログイン: routes/web.php:70 Route::middleware('auth') → app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: 権限なし（他人の計画・本人でも status が Completed の計画）: app/Policies/ReadingPlanPolicy.php:16-17 の条件が false → app/Exceptions/Handler.php:61 return response()->view('errors.403', [], 403);
+  - 事実: 対象なし: routes/web.php:75 の {plan} と app/Http/Controllers/ReadingPlanController.php:72 ReadingPlan $plan の暗黙バインディング → app/Exceptions/Handler.php:55 return response()->view('errors.404', [], 404);
+  - 事実: 削除済み書籍に紐づく計画: app/Http/Controllers/ReadingPlanController.php:72-80 に book の参照なし。app/Models/ReadingPlan.php:41 return $this->belongsTo(Book::class)->withTrashed();
+  - 事実: CSRFトークンの検証で弾かれる場合: app/Http/Kernel.php:37 \App\Http\Middleware\VerifyCsrfToken::class, → app/Exceptions/Handler.php:67 return response()->view('errors.419', [], 419);
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: reading_plans 更新: app/Http/Controllers/ReadingPlanController.php:76 $plan->update(['target_date' => $request->validated('target_date')]);（対象は URL の {plan} の id の1件）
+  - 事実: app/Models/ReadingPlan.php:29 'target_date' => 'date',
+  - 事実: app/Models/ReadingPlan.php:14-20 $fillable = ['user_id', 'book_id', 'target_date', 'status', 'completed_at']
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -rn "Log::\|Notification::\|->notify(\|Http::\|event(\|dispatch(" app/Http/Controllers/ReadingPlanController.php → 出力0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/ReadingPlanTest.php:56-68 test_update_success ->assertRedirect(route('reading-plans.index')); ->assertSessionHas('success', '読書計画を更新しました');
+  - 事実: tests/Feature/ReadingPlanTest.php:157-175 test_update_changes_only_target_date（book_id・status を混ぜても変わらない）
+  - 事実: tests/Feature/ReadingPlanTest.php:190-198 test_other_users_plan_update_forbidden ->assertForbidden();
+  - 事実: tests/Feature/ReadingPlanTest.php:245-257 test_update_on_completed_plan_forbidden_even_for_owner ->assertForbidden();
+  - 事実: 入力検証のテスト: grep -n "assertSessionHasErrors" tests/Feature/ReadingPlanTest.php → 出力は 114 行（store の重複エラー）の1件のみ
+  - 事実: 未ログインでこのルートを叩くテスト: 該当なし grep -rn "reading-plans" tests/Feature/ScreenAccessTest.php → 出力0件（tests/Feature/ReadingPlanTest.php の各テストは actingAs を使用）
+
+### R039 DELETE /reading-plans/{plan}
+- 名前: reading-plans.destroy
+- 処理: App\Http\Controllers\ReadingPlanController@destroy
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/ReadingPlanController.php:101-109 public function destroy(ReadingPlan $plan): RedirectResponse
+  - 事実: routes/web.php:77 Route::delete('/reading-plans/{plan}', [ReadingPlanController::class, 'destroy'])->name('reading-plans.destroy');
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: app/Http/Controllers/ReadingPlanController.php:103 $this->authorize('delete', $plan);
+  - 事実: app/Policies/ReadingPlanPolicy.php:23-26 public function delete(User $user, ReadingPlan $plan): bool { return $user->id === $plan->user_id; }（status の条件なし）
+  - 事実: Policy の対応付け: app/Providers/AuthServiceProvider.php:15-18 の $policies は Book と Review の2件のみ（ReadingPlan の記載なし）。S150 policy ReadingPlan=App\Policies\ReadingPlanPolicy
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: app/Http/Controllers/ReadingPlanController.php:101 public function destroy(ReadingPlan $plan): RedirectResponse（FormRequest 不使用）
+  - 事実: 該当なし grep -n "validate(" app/Http/Controllers/ReadingPlanController.php → 出力0件
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/ReadingPlanController.php:107-108 return redirect()->route('reading-plans.index') ->with('success', '読書計画を削除しました');
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 未ログイン: routes/web.php:70 Route::middleware('auth') → app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: 権限なし（他人の計画）: app/Policies/ReadingPlanPolicy.php:25 の条件が false → app/Exceptions/Handler.php:61 return response()->view('errors.403', [], 403);
+  - 事実: 対象なし: routes/web.php:77 の {plan} と app/Http/Controllers/ReadingPlanController.php:101 ReadingPlan $plan の暗黙バインディング → app/Exceptions/Handler.php:55 return response()->view('errors.404', [], 404);
+  - 事実: CSRFトークンの検証で弾かれる場合: app/Http/Kernel.php:37 \App\Http\Middleware\VerifyCsrfToken::class, → app/Exceptions/Handler.php:67 return response()->view('errors.419', [], 419);
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: reading_plans 削除: app/Http/Controllers/ReadingPlanController.php:105 $plan->delete();
+  - 事実: 削除の種類: grep -n "SoftDeletes" app/Models/ReadingPlan.php app/Models/Review.php → 出力0件
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -rn "Log::\|Notification::\|->notify(\|Http::\|event(\|dispatch(" app/Http/Controllers/ReadingPlanController.php → 出力0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/ReadingPlanTest.php:87-98 test_destroy_success ->assertSessionHas('success', '読書計画を削除しました'); assertDatabaseMissing('reading_plans', ['id' => $plan->id]);
+  - 事実: tests/Feature/ReadingPlanTest.php:212-220 test_other_users_plan_destroy_forbidden ->assertForbidden();
+  - 事実: 未ログインでこのルートを叩くテスト: 該当なし grep -rn "reading-plans" tests/Feature/ScreenAccessTest.php → 出力0件（tests/Feature/ReadingPlanTest.php の各テストは actingAs を使用）
+
+### R040 POST /reading-plans/{plan}/complete
+- 名前: reading-plans.complete
+- 処理: App\Http\Controllers\ReadingPlanController@complete
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/ReadingPlanController.php:85-96 public function complete(ReadingPlan $plan): RedirectResponse
+  - 事実: routes/web.php:76 Route::post('/reading-plans/{plan}/complete', [ReadingPlanController::class, 'complete'])->name('reading-plans.complete');
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: app/Http/Controllers/ReadingPlanController.php:87 $this->authorize('complete', $plan);
+  - 事実: app/Policies/ReadingPlanPolicy.php:31-35 public function complete(User $user, ReadingPlan $plan): bool { return $user->id === $plan->user_id && $plan->status !== ReadingPlanStatus::Completed; }
+  - 事実: Policy の対応付け: app/Providers/AuthServiceProvider.php:15-18 の $policies は Book と Review の2件のみ（ReadingPlan の記載なし）。S150 policy ReadingPlan=App\Policies\ReadingPlanPolicy
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: app/Http/Controllers/ReadingPlanController.php:85 public function complete(ReadingPlan $plan): RedirectResponse（FormRequest 不使用）
+  - 事実: 該当なし grep -n "validate(" app/Http/Controllers/ReadingPlanController.php → 出力0件
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/ReadingPlanController.php:94-95 return redirect()->route('reading-plans.index') ->with('success', '読書計画を完了しました');
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 未ログイン: routes/web.php:70 Route::middleware('auth') → app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: 権限なし（他人の計画・status が Completed の計画）: app/Policies/ReadingPlanPolicy.php:33-34 の条件が false → app/Exceptions/Handler.php:61 return response()->view('errors.403', [], 403);
+  - 事実: status が Expired の計画: app/Policies/ReadingPlanPolicy.php:34 && $plan->status !== ReadingPlanStatus::Completed;（Expired は条件に含まれない）
+  - 事実: 対象なし: routes/web.php:76 の {plan} と app/Http/Controllers/ReadingPlanController.php:85 ReadingPlan $plan の暗黙バインディング → app/Exceptions/Handler.php:55 return response()->view('errors.404', [], 404);
+  - 事実: CSRFトークンの検証で弾かれる場合: app/Http/Kernel.php:37 \App\Http\Middleware\VerifyCsrfToken::class, → app/Exceptions/Handler.php:67 return response()->view('errors.419', [], 419);
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: reading_plans 更新: app/Http/Controllers/ReadingPlanController.php:89-92 $plan->update([ 'status' => ReadingPlanStatus::Completed, 'completed_at' => now(), ]);
+  - 事実: app/Enums/ReadingPlanStatus.php:8 case Completed = 'completed';
+  - 事実: app/Models/ReadingPlan.php:28 'status' => ReadingPlanStatus::class,
+  - 事実: app/Models/ReadingPlan.php:30 'completed_at' => 'datetime',
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -rn "Log::\|Notification::\|->notify(\|Http::\|event(\|dispatch(" app/Http/Controllers/ReadingPlanController.php → 出力0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/ReadingPlanTest.php:71-84 test_complete_success ->assertSessionHas('success', '読書計画を完了しました'); assertSame(ReadingPlanStatus::Completed, $fresh->status); assertNotNull($fresh->completed_at);
+  - 事実: tests/Feature/ReadingPlanTest.php:201-209 test_other_users_plan_complete_forbidden ->assertForbidden();
+  - 事実: tests/Feature/ReadingPlanTest.php:225-231 test_complete_on_already_completed_plan_forbidden ->assertForbidden();
+  - 事実: 未ログインでこのルートを叩くテスト: 該当なし grep -rn "reading-plans" tests/Feature/ScreenAccessTest.php → 出力0件（tests/Feature/ReadingPlanTest.php の各テストは actingAs を使用）
+
+### R041 GET|HEAD /reading-plans/{plan}/edit
+- 名前: reading-plans.edit
+- 処理: App\Http\Controllers\ReadingPlanController@edit
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/ReadingPlanController.php:62-67 public function edit(ReadingPlan $plan): View
+  - 事実: routes/web.php:74 Route::get('/reading-plans/{plan}/edit', [ReadingPlanController::class, 'edit'])->name('reading-plans.edit');
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: app/Http/Controllers/ReadingPlanController.php:64 $this->authorize('update', $plan);
+  - 事実: app/Policies/ReadingPlanPolicy.php:14-18 public function update(User $user, ReadingPlan $plan): bool { return $user->id === $plan->user_id && $plan->status !== ReadingPlanStatus::Completed; }
+  - 事実: Policy の対応付け: app/Providers/AuthServiceProvider.php:15-18 の $policies は Book と Review の2件のみ（ReadingPlan の記載なし）。S150 policy ReadingPlan=App\Policies\ReadingPlanPolicy
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: app/Http/Controllers/ReadingPlanController.php:62 public function edit(ReadingPlan $plan): View（FormRequest 不使用）
+  - 事実: 該当なし grep -n "validate(" app/Http/Controllers/ReadingPlanController.php → 出力0件
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/ReadingPlanController.php:66 return view('reading-plans.edit', ['readingPlan' => $plan]);
+  - 事実: ビュー内の書籍参照: resources/views/reading-plans/edit.blade.php:13 対象書籍: <strong>{{ $readingPlan->book->title }}</strong>
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 未ログイン: routes/web.php:70 Route::middleware('auth') → app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: 未ログイン: 照合R22 GET /reading-plans/1/edit -> 302 http://localhost:8022/login
+  - 事実: 未ログイン（存在しない id）: 照合R22 GET /reading-plans/99999/edit -> 302 http://localhost:8022/login
+  - 事実: 権限なし（他人の計画・本人でも status が Completed の計画）: app/Policies/ReadingPlanPolicy.php:16-17 の条件が false → app/Exceptions/Handler.php:61 return response()->view('errors.403', [], 403);
+  - 事実: 対象なし: routes/web.php:74 の {plan} と app/Http/Controllers/ReadingPlanController.php:62 ReadingPlan $plan の暗黙バインディング → app/Exceptions/Handler.php:55 return response()->view('errors.404', [], 404);
+  - 事実: 削除済み書籍に紐づく計画: app/Models/ReadingPlan.php:41 return $this->belongsTo(Book::class)->withTrashed();
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: reading_plans 読み取り: URL の {plan} の id の1件（routes/web.php:74・app/Http/Controllers/ReadingPlanController.php:62）
+  - 事実: books 読み取り: ビューの $readingPlan->book（app/Models/ReadingPlan.php:41 ->withTrashed() 付き）
+  - 事実: 書き込み: 該当なし（edit メソッド 62-67 行は authorize と view のみ）
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -rn "Log::\|Notification::\|->notify(\|Http::\|event(\|dispatch(" app/Http/Controllers/ReadingPlanController.php → 出力0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/ReadingPlanTest.php:313-321 test_owner_can_view_edit_form ->assertOk() ->assertSee('編集対象の本');
+  - 事実: tests/Feature/ReadingPlanTest.php:180-187 test_other_users_plan_edit_forbidden ->assertForbidden();
+  - 事実: tests/Feature/ReadingPlanTest.php:236-242 test_edit_on_completed_plan_forbidden_even_for_owner ->assertForbidden();
+  - 事実: 未ログインでこのルートを叩くテスト: 該当なし grep -rn "reading-plans" tests/Feature/ScreenAccessTest.php → 出力0件（tests/Feature/ReadingPlanTest.php の各テストは actingAs を使用）
+
+### R042 GET|HEAD /register
+- 名前: register
+- 処理: Laravel\Fortify\Http\Controllers\RegisteredUserController@create
+- ミドルウェア: web, App\Http\Middleware\RedirectIfAuthenticated:web
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: vendor/laravel/fortify/src/Http/Controllers/RegisteredUserController.php:41-44 public function create(Request $request): RegisterViewResponse { return app(RegisterViewResponse::class); }
+  - 事実: vendor/laravel/fortify/routes/routes.php:72-74 Route::get(RoutePath::for('register', '/register'), [RegisteredUserController::class, 'create']) ->middleware(['guest:'.config('fortify.guard')]) ->name('register');
+  - 事実: アプリ側の設定: config/fortify.php:147 Features::registration(),
+  - 事実: アプリ側の設定: config/fortify.php:133 'views' => true,
+  - 事実: アプリ側の上書き: app/Providers/FortifyServiceProvider.php:34-36 Fortify::registerView(function () { return view('auth.register'); });
+  - 事実: S150 RegisterViewResponse bound=true
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし（Policy・Gate） grep -n "authorize\|Gate" vendor/laravel/fortify/src/Http/Controllers/RegisteredUserController.php → 出力0件
+  - 事実: ゲスト限定: vendor/laravel/fortify/routes/routes.php:73 ->middleware(['guest:'.config('fortify.guard')])、app/Http/Kernel.php:61 'guest' => \App\Http\Middleware\RedirectIfAuthenticated::class,
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: 該当なし vendor/laravel/fortify/src/Http/Controllers/RegisteredUserController.php:41-44 は app(RegisterViewResponse::class) を返すのみ（検証処理なし）
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Providers/FortifyServiceProvider.php:35 return view('auth.register');（渡す変数なし）
+  - 事実: 照合R22 GET /register -> 200
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: ログイン済み: app/Http/Middleware/RedirectIfAuthenticated.php:24 return redirect(RouteServiceProvider::HOME);
+  - 事実: app/Providers/RouteServiceProvider.php:20 public const HOME = '/books';
+  - 事実: 対象なし・削除済み: 該当なし（URI '/register' にルートパラメータなし）
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: 該当なし vendor/laravel/fortify/src/Http/Controllers/RegisteredUserController.php:41-44 と app/Providers/FortifyServiceProvider.php:34-36 に DB の読み書きなし
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -n "event(\|Log::\|notify" vendor/laravel/fortify/src/Http/Controllers/RegisteredUserController.php の出力は 62 行（store 内）のみで、create の 41-44 行には0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/ScreenAccessTest.php:16-22 test_authenticated_user_redirected_from_guest_pages $this->actingAs($user)->get('/register')->assertRedirect('/books');
+  - 事実: 未ログインで表示されることのテスト: grep -rnF "get('/register')" tests → 出力は tests/Feature/ScreenAccessTest.php:20 の1件のみ
+
+### R043 POST /register
+- 名前: register.store
+- 処理: Laravel\Fortify\Http\Controllers\RegisteredUserController@store
+- ミドルウェア: web, App\Http\Middleware\RedirectIfAuthenticated:web
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: vendor/laravel/fortify/src/Http/Controllers/RegisteredUserController.php:53-71 public function store(Request $request, CreatesNewUsers $creator): RegisterResponse
+  - 事実: vendor/laravel/fortify/routes/routes.php:77-79 Route::post(RoutePath::for('register', '/register'), [RegisteredUserController::class, 'store']) ->middleware(['guest:'.config('fortify.guard')]) ->name('register.store');
+  - 事実: アプリ側の上書き: app/Providers/FortifyServiceProvider.php:28 Fortify::createUsersUsing(CreateNewUser::class);
+  - 事実: アプリ側の処理: app/Actions/Fortify/CreateNewUser.php:20-43 public function create(array $input)
+  - 事実: アプリ側の設定: config/fortify.php:147 Features::registration(),
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし（Policy・Gate） grep -n "authorize\|Gate" vendor/laravel/fortify/src/Http/Controllers/RegisteredUserController.php → 出力0件
+  - 事実: ゲスト限定: vendor/laravel/fortify/routes/routes.php:78 ->middleware(['guest:'.config('fortify.guard')])
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: app/Actions/Fortify/CreateNewUser.php:23 'name' => ['required', 'string', 'max:255'],
+  - 事実: app/Actions/Fortify/CreateNewUser.php:24 'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+  - 事実: app/Actions/Fortify/CreateNewUser.php:25 'password' => ['required', 'string', 'min:8', 'confirmed'],
+  - 事実: app/Actions/Fortify/CreateNewUser.php:27 'name.required' => 'お名前を入力してください',
+  - 事実: app/Actions/Fortify/CreateNewUser.php:28 'name.max' => 'お名前は255文字以内で入力してください',
+  - 事実: app/Actions/Fortify/CreateNewUser.php:29 'email.required' => 'メールアドレスを入力してください',
+  - 事実: app/Actions/Fortify/CreateNewUser.php:30 'email.email' => 'メールアドレスの形式が正しくありません',
+  - 事実: app/Actions/Fortify/CreateNewUser.php:31 'email.max' => 'メールアドレスは255文字以内で入力してください',
+  - 事実: app/Actions/Fortify/CreateNewUser.php:32 'email.unique' => 'このメールアドレスは既に登録されています',
+  - 事実: app/Actions/Fortify/CreateNewUser.php:33 'password.required' => 'パスワードを入力してください',
+  - 事実: app/Actions/Fortify/CreateNewUser.php:34 'password.min' => 'パスワードは8文字以上で入力してください',
+  - 事実: app/Actions/Fortify/CreateNewUser.php:35 'password.confirmed' => 'パスワード確認が一致しません',
+  - 事実: name.string・password.string: 独自メッセージ定義なし。lang/ja/validation.php:7 'string' => ':attributeは文字列で入力してください。',（属性名 lang/ja/validation.php:26 'name' => '名前', / :28 'password' => 'パスワード',）
+  - 事実: S151 CreateNewUser {} => {"name":["お名前を入力してください"],"email":["メールアドレスを入力してください"],"password":["パスワードを入力してください"]}
+  - 事実: S151 CreateNewUser name=256chars email=invalid password=short confirmation=x => {"name":["お名前は255文字以内で入力してください"],"email":["メールアドレスの形式が正しくありません"],"password":["パスワードは8文字以上で入力してください","パスワード確認が一致しません"]}
+  - 事実: S151 CreateNewUser name=[a] email=existing(256chars no) password=[x] => {"name":["名前は文字列で入力してください。"],"email":["このメールアドレスは既に登録されています"],"password":["パスワードは文字列で入力してください。","パスワードは8文字以上で入力してください","パスワード確認が一致しません"]}
+  - 事実: S151 CreateNewUser email=256chars => {"email":["メールアドレスは255文字以内で入力してください"],"password":["パスワードは8文字以上で入力してください","パスワード確認が一致しません"]}
+  - 事実: 検証前の加工: vendor/laravel/fortify/src/Http/Controllers/RegisteredUserController.php:56-60 if (config('fortify.lowercase_usernames') && $request->has(Fortify::username())) { $request->merge([ Fortify::username() => Str::lower(...) ]) }
+  - 事実: config/fortify.php:63 'lowercase_usernames' => true,
+  - 事実: config/fortify.php:48 'username' => 'email',
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: vendor/laravel/fortify/src/Http/Controllers/RegisteredUserController.php:64 $this->guard->login($user, $request->boolean('remember'));
+  - 事実: vendor/laravel/fortify/src/Http/Controllers/RegisteredUserController.php:66-68 if ($request->hasSession()) { $request->session()->regenerate(); }
+  - 事実: vendor/laravel/fortify/src/Http/Responses/RegisterResponse.php:19-21 return $request->wantsJson() ? new JsonResponse('', 201) : redirect()->intended(Fortify::redirects('register'));
+  - 事実: vendor/laravel/fortify/src/Fortify.php:94 return config('fortify.redirects.'.$redirect) ?? $default ?? config('fortify.home');
+  - 事実: S150 fortify.redirects={"login":null,"logout":null,"password-confirmation":null,"register":null,"email-verification":null,"password-reset":null}
+  - 事実: config/fortify.php:76 'home' => \App\Providers\RouteServiceProvider::HOME,（app/Providers/RouteServiceProvider.php:20 public const HOME = '/books';）
+  - 事実: フラッシュ文言: 該当なし（vendor/laravel/fortify/src/Http/Responses/RegisterResponse.php:19-21 に with() なし）
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 検証失敗: app/Actions/Fortify/CreateNewUser.php:36 ])->validate(); が ValidationException を送出（app/Actions/Fortify/CreateNewUser.php:18 @throws ValidationException）
+  - 事実: 検証失敗時にセッションへ戻さない入力: app/Exceptions/Handler.php:20-24 $dontFlash = [ 'current_password', 'password', 'password_confirmation', ];
+  - 事実: ログイン済み: app/Http/Middleware/RedirectIfAuthenticated.php:24 return redirect(RouteServiceProvider::HOME);
+  - 事実: CSRFトークンの検証で弾かれる場合: app/Http/Kernel.php:37 \App\Http\Middleware\VerifyCsrfToken::class, → app/Exceptions/Handler.php:67 return response()->view('errors.419', [], 419);
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: users 挿入: app/Actions/Fortify/CreateNewUser.php:38-42 return User::create([ 'name' => $input['name'], 'email' => $input['email'], 'password' => Hash::make($input['password']), ]);
+  - 事実: users 読み取り（重複確認）: app/Actions/Fortify/CreateNewUser.php:24 'unique:users,email'
+  - 事実: app/Models/User.php:47 'password' => 'hashed',
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: vendor/laravel/fortify/src/Http/Controllers/RegisteredUserController.php:62 event(new Registered($user = $creator->create($request->all())));
+  - 事実: app/Providers/EventServiceProvider.php:18-20 Registered::class => [ SendEmailVerificationNotification::class, ],
+  - 事実: vendor/laravel/framework/src/Illuminate/Auth/Listeners/SendEmailVerificationNotification.php:18 if ($event->user instanceof MustVerifyEmail && ! $event->user->hasVerifiedEmail()) {
+  - 事実: app/Models/User.php:5 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+  - 事実: app/Models/User.php:13 class User extends Authenticatable
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/AuthTest.php:15-27 test_registration_logs_in_and_redirects ->assertRedirect('/books'); assertAuthenticated(); assertDatabaseHas('users', ['email' => 'new@example.com']);
+  - 事実: tests/Feature/AuthTest.php:30-51 test_registration_validation_errors assertSessionHasErrors(['name', 'email', 'password']) / ('email') / ('password')
+
+### R044 GET|HEAD /reports
+- 名前: reports.index
+- 処理: App\Http\Controllers\ReportController@index
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/ReportController.php:21-35 public function index(): View
+  - 事実: app/Http/Controllers/ReportController.php:43-52 private function buildSummary(Collection $reviews): array
+  - 事実: app/Http/Controllers/ReportController.php:60-66 private function buildRatingDistribution(Collection $reviews): Collection
+  - 事実: app/Http/Controllers/ReportController.php:75-89 private function buildTopRatedBooks(Collection $reviews): Collection
+  - 事実: app/Http/Controllers/ReportController.php:98-116 private function buildGenreRatings(Collection $reviews): Collection
+  - 事実: routes/web.php:66 Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし grep -rn "authorize\|Gate::" app/Http/Controllers/ReportController.php → 出力0件
+  - 事実: ログイン要求のみ: routes/web.php:65 Route::middleware('auth')->group(function () {
+  - 事実: 対象の絞り込み: app/Http/Controllers/ReportController.php:23 $reviews = Review::where('user_id', Auth::id())
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: 該当なし grep -n "validate\|Request" app/Http/Controllers/ReportController.php → 出力0件
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/ReportController.php:34 return view('reports.index', compact('stats'));
+  - 事実: app/Http/Controllers/ReportController.php:27-32 $stats = [ 'summary' => ..., 'rating_distribution' => ..., 'top_rated_books' => ..., 'genre_ratings' => ..., ];
+  - 事実: summary の形: app/Http/Controllers/ReportController.php:47-51 'total_reviews' => $totalReviews, 'books_read' => $reviews->pluck('book_id')->unique()->count(), 'average_rating' => $totalReviews > 0 ? round($reviews->avg('rating'), 1) : 0,
+  - 事実: rating_distribution の形: app/Http/Controllers/ReportController.php:62-65 collect(range(1, 5)) ->mapWithKeys(fn (int $star): array => [ $star - 1 => $reviews->where('rating', $star)->count(), ]);
+  - 事実: top_rated_books の要素: app/Http/Controllers/ReportController.php:81-84 'id' / 'title' / 'author' / 'rating' => $group->max('rating'),
+  - 事実: genre_ratings の要素: app/Http/Controllers/ReportController.php:108-111 'id' / 'name' / 'count' => $group->count(), / 'average_rating' => $group->avg('rating'),
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 未ログイン: routes/web.php:65 Route::middleware('auth') → app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: 未ログイン: 照合R22 GET /reports -> 302 http://localhost:8022/login
+  - 事実: 権限なし・対象なし: 該当なし（URI '/reports' にルートパラメータなし。grep -rn "authorize\|Gate::" app/Http/Controllers/ReportController.php → 出力0件）
+  - 事実: レビュー0件: app/Http/Controllers/ReportController.php:50 'average_rating' => $totalReviews > 0 ? round($reviews->avg('rating'), 1) : 0,
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: reviews 読み取り: app/Http/Controllers/ReportController.php:23-25 Review::where('user_id', Auth::id()) ->with('book.genres') ->get();（件数制限なし）
+  - 事実: 削除済み書籍の扱い: app/Models/Review.php:23 return $this->belongsTo(Book::class)->withTrashed();
+  - 事実: 高評価の条件: app/Http/Controllers/ReportController.php:78 ->filter(fn (Review $review): bool => $review->rating >= 4)
+  - 事実: 高評価の集約と並び: app/Http/Controllers/ReportController.php:79 ->groupBy('book_id')、:86-87 ->sortByDesc('rating') ->take(5)
+  - 事実: ジャンル別の集約: app/Http/Controllers/ReportController.php:101 ->flatMap(fn (Review $review) => $review->book->genres->map(...))、:106 ->groupBy('id')
+  - 事実: ジャンル別の並び: app/Http/Controllers/ReportController.php:113-114 ->sortByDesc('average_rating') ->take(5)
+  - 事実: 書き込み: 該当なし（app/Http/Controllers/ReportController.php:21-116 に create/update/delete/save の呼び出しなし）
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -rn "Log::\|Notification::\|->notify(\|Http::\|event(\|dispatch(" app/Http/Controllers/ReportController.php → 出力0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/ReadingReportTest.php:21-61 test_report_shows_all_statistics
+  - 事実: tests/Feature/ReadingReportTest.php:67-80 test_books_read_counts_unique_books_not_review_count
+  - 事実: tests/Feature/ReadingReportTest.php:83-104 test_soft_deleted_book_review_included_in_report
+  - 事実: tests/Feature/ReadingReportTest.php:107-110 test_report_requires_authentication $this->get('/reports')->assertRedirect('/login');
+
+### R045 PUT /reviews/{review}
+- 名前: reviews.update
+- 処理: App\Http\Controllers\ReviewController@update
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/ReviewController.php:40-47 public function update(UpdateReviewRequest $request, Review $review): RedirectResponse
+  - 事実: routes/web.php:51 Route::put('/reviews/{review}', [ReviewController::class, 'update'])->name('reviews.update');
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: app/Http/Controllers/ReviewController.php:42 $this->authorize('update', $review);
+  - 事実: app/Policies/ReviewPolicy.php:13-16 public function update(User $user, Review $review): bool { return $user->id === $review->user_id; }
+  - 事実: app/Providers/AuthServiceProvider.php:17 \App\Models\Review::class => \App\Policies\ReviewPolicy::class,
+  - 事実: app/Http/Requests/UpdateReviewRequest.php:14 return true;（FormRequest の authorize）
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: app/Http/Requests/UpdateReviewRequest.php:25 'rating' => ['required', 'integer', 'between:1,5'],
+  - 事実: app/Http/Requests/UpdateReviewRequest.php:26 'comment' => ['nullable', 'string', 'max:1000'],
+  - 事実: app/Http/Requests/UpdateReviewRequest.php:38 'rating.required' => '評価を選択してください',
+  - 事実: app/Http/Requests/UpdateReviewRequest.php:39 'rating.integer' => '評価は1〜5の範囲で選択してください',
+  - 事実: app/Http/Requests/UpdateReviewRequest.php:40 'rating.between' => '評価は1〜5の範囲で選択してください',
+  - 事実: app/Http/Requests/UpdateReviewRequest.php:41 'comment.max' => 'コメントは1000文字以内で入力してください',
+  - 事実: comment.string: messages() に定義なし。lang/ja/validation.php:7 'string' => ':attributeは文字列で入力してください。',
+  - 事実: S151 ReviewUpdate {} => {"rating":["評価を選択してください"]}
+  - 事実: S151 ReviewUpdate rating=x comment=[a] => {"rating":["評価は1〜5の範囲で選択してください"],"comment":["commentは文字列で入力してください。"]}
+  - 事実: S151 ReviewUpdate rating=6 comment=1001chars => {"rating":["評価は1〜5の範囲で選択してください"],"comment":["コメントは1000文字以内で入力してください"]}
+  - 事実: S151 ReviewUpdate rating=0 => {"rating":["評価は1〜5の範囲で選択してください"]}
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/ReviewController.php:46 return redirect()->route('books.show', $review->book)->with('success', 'レビューを更新しました');
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 検証失敗: 該当なし（アプリ側の上書き） grep -rn "failedValidation" app/Http/Requests/UpdateReviewRequest.php → 出力0件（FormRequest 標準の処理）
+  - 事実: 未ログイン: routes/web.php:48 Route::middleware('auth') → app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: 権限なし（他人のレビュー）: app/Policies/ReviewPolicy.php:15 の条件が false → app/Exceptions/Handler.php:61 return response()->view('errors.403', [], 403);
+  - 事実: 対象なし: routes/web.php:51 の {review} と app/Http/Controllers/ReviewController.php:40 Review $review の暗黙バインディング → app/Exceptions/Handler.php:55 return response()->view('errors.404', [], 404);
+  - 事実: 書籍が削除済み: app/Models/Review.php:23 return $this->belongsTo(Book::class)->withTrashed();、routes/web.php:36 Route::get('/books/{book}', [BookController::class, 'show'])->name('books.show')->withTrashed();
+  - 事実: CSRFトークンの検証で弾かれる場合: app/Http/Kernel.php:37 \App\Http\Middleware\VerifyCsrfToken::class, → app/Exceptions/Handler.php:67 return response()->view('errors.419', [], 419);
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: reviews 更新: app/Http/Controllers/ReviewController.php:44 $review->update($request->validated());（rating・comment）
+  - 事実: app/Models/Review.php:14 protected $fillable = ['user_id', 'book_id', 'rating', 'comment'];
+  - 事実: books 読み取り: app/Http/Controllers/ReviewController.php:46 $review->book（app/Models/Review.php:23 ->withTrashed()）
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -rn "Log::\|Notification::\|->notify(\|Http::\|event(\|dispatch(" app/Http/Controllers/ReviewController.php app/Http/Requests/UpdateReviewRequest.php → 出力0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/ReviewTest.php:58-72 test_edit_authorization（:67-68 他人の put ->assertForbidden(); :69-71 本人の put ->assertRedirect(route('books.show', $review->book)); assertDatabaseHas('reviews', ['id' => $review->id, 'rating' => 5, 'comment' => '更新']);）
+  - 事実: tests/Feature/ReviewTest.php:106-124 test_review_operations_on_deleted_book（:117-118 put ->assertRedirect(route('books.show', $book));）
+  - 事実: 入力検証・フラッシュ文言のテスト: grep -rn "reviews.update" tests の出力は tests/Feature/ReviewTest.php:67・69・117 の3件、grep -rn "レビューを更新しました" tests → 出力0件
+
+### R046 DELETE /reviews/{review}
+- 名前: reviews.destroy
+- 処理: App\Http\Controllers\ReviewController@destroy
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/ReviewController.php:52-60 public function destroy(Review $review): RedirectResponse
+  - 事実: routes/web.php:52 Route::delete('/reviews/{review}', [ReviewController::class, 'destroy'])->name('reviews.destroy');
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: app/Http/Controllers/ReviewController.php:54 $this->authorize('delete', $review);
+  - 事実: app/Policies/ReviewPolicy.php:21-24 public function delete(User $user, Review $review): bool { return $user->id === $review->user_id; }
+  - 事実: app/Providers/AuthServiceProvider.php:17 \App\Models\Review::class => \App\Policies\ReviewPolicy::class,
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: app/Http/Controllers/ReviewController.php:52 public function destroy(Review $review): RedirectResponse（FormRequest 不使用）
+  - 事実: 該当なし grep -n "validate(" app/Http/Controllers/ReviewController.php → 出力0件
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/ReviewController.php:59 return redirect()->route('books.show', $book)->with('success', 'レビューを削除しました');
+  - 事実: app/Http/Controllers/ReviewController.php:56 $book = $review->book;
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 未ログイン: routes/web.php:48 Route::middleware('auth') → app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: 権限なし（他人のレビュー）: app/Policies/ReviewPolicy.php:23 の条件が false → app/Exceptions/Handler.php:61 return response()->view('errors.403', [], 403);
+  - 事実: 対象なし: routes/web.php:52 の {review} と app/Http/Controllers/ReviewController.php:52 Review $review の暗黙バインディング → app/Exceptions/Handler.php:55 return response()->view('errors.404', [], 404);
+  - 事実: 書籍が削除済み: app/Models/Review.php:23 return $this->belongsTo(Book::class)->withTrashed();
+  - 事実: CSRFトークンの検証で弾かれる場合: app/Http/Kernel.php:37 \App\Http\Middleware\VerifyCsrfToken::class, → app/Exceptions/Handler.php:67 return response()->view('errors.419', [], 419);
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: reviews 削除: app/Http/Controllers/ReviewController.php:57 $review->delete();
+  - 事実: 削除の種類: grep -n "SoftDeletes" app/Models/ReadingPlan.php app/Models/Review.php → 出力0件
+  - 事実: review_likes の連動: database/migrations/2026_09_01_115254_create_review_likes_table.php:16 $table->foreignId('review_id')->constrained()->cascadeOnDelete();
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -rn "Log::\|Notification::\|->notify(\|Http::\|event(\|dispatch(" app/Http/Controllers/ReviewController.php app/Http/Requests/UpdateReviewRequest.php → 出力0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/ReviewTest.php:75-88 test_delete_authorization（:81 他人 ->assertForbidden(); :84-86 本人 ->assertRedirect(route('books.show', $review->book)) ->assertSessionHas('success', 'レビューを削除しました');）
+  - 事実: tests/Feature/ReviewTest.php:91-103 test_review_delete_cascades_likes
+  - 事実: tests/Feature/ReviewTest.php:106-124 test_review_operations_on_deleted_book（:121-123 delete ->assertSessionHas('success');）
+
+### R047 GET|HEAD /reviews/{review}/edit
+- 名前: reviews.edit
+- 処理: App\Http\Controllers\ReviewController@edit
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/ReviewController.php:28-35 public function edit(Review $review): View
+  - 事実: routes/web.php:50 Route::get('/reviews/{review}/edit', [ReviewController::class, 'edit'])->name('reviews.edit');
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: app/Http/Controllers/ReviewController.php:30 $this->authorize('update', $review);
+  - 事実: app/Policies/ReviewPolicy.php:13-16 public function update(User $user, Review $review): bool { return $user->id === $review->user_id; }
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: app/Http/Controllers/ReviewController.php:28 public function edit(Review $review): View（FormRequest 不使用）
+  - 事実: 該当なし grep -n "validate(" app/Http/Controllers/ReviewController.php → 出力0件
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/ReviewController.php:34 return view('reviews.edit', compact('review'));
+  - 事実: app/Http/Controllers/ReviewController.php:32 $review->load('book');
+  - 事実: ビュー内の書籍参照: resources/views/reviews/edit.blade.php:13 {{ $review->book->title }}、:44 route('books.show', $review->book)
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 未ログイン: routes/web.php:48 Route::middleware('auth') → app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: 未ログイン: 照合R22 GET /reviews/1/edit -> 302 http://localhost:8022/login
+  - 事実: 未ログイン（存在しない id）: 照合R22 GET /reviews/99999/edit -> 302 http://localhost:8022/login
+  - 事実: 権限なし（他人のレビュー）: app/Policies/ReviewPolicy.php:15 の条件が false → app/Exceptions/Handler.php:61 return response()->view('errors.403', [], 403);
+  - 事実: 対象なし: routes/web.php:50 の {review} と app/Http/Controllers/ReviewController.php:28 Review $review の暗黙バインディング → app/Exceptions/Handler.php:55 return response()->view('errors.404', [], 404);
+  - 事実: 書籍が削除済み: app/Models/Review.php:23 return $this->belongsTo(Book::class)->withTrashed();
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: reviews 読み取り: URL の {review} の id の1件（routes/web.php:50）
+  - 事実: books 読み取り: app/Http/Controllers/ReviewController.php:32 $review->load('book');（app/Models/Review.php:23 ->withTrashed()）
+  - 事実: 書き込み: 該当なし（edit メソッド 28-35 行は authorize・load・view のみ）
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -rn "Log::\|Notification::\|->notify(\|Http::\|event(\|dispatch(" app/Http/Controllers/ReviewController.php app/Http/Requests/UpdateReviewRequest.php → 出力0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/ReviewTest.php:58-72 test_edit_authorization（:64 本人 ->assertOk(); :65 他人 ->assertForbidden();）
+  - 事実: tests/Feature/ReviewTest.php:106-124 test_review_operations_on_deleted_book（:114 ->get(route('reviews.edit', $review))->assertOk();）
+
+### R048 POST /reviews/{review}/like
+- 名前: reviews.like
+- 処理: App\Http\Controllers\ReviewController@like
+- ミドルウェア: web, App\Http\Middleware\Authenticate
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: app/Http/Controllers/ReviewController.php:65-70 public function like(Review $review): RedirectResponse { Auth::user()->likedReviews()->toggle($review); return back(); }
+  - 事実: routes/web.php:53 Route::post('/reviews/{review}/like', [ReviewController::class, 'like'])->name('reviews.like');
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし grep -n "authorize(" app/Http/Controllers/ReviewController.php → 出力は 30・42・54 行の3件のみで、like の行範囲 65-70 には0件
+  - 事実: ログイン要求のみ: routes/web.php:48 Route::middleware('auth')->group(function () {
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: app/Http/Controllers/ReviewController.php:65 public function like(Review $review): RedirectResponse（FormRequest 不使用）
+  - 事実: 該当なし grep -n "validate(" app/Http/Controllers/ReviewController.php → 出力0件
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: app/Http/Controllers/ReviewController.php:69 return back();
+  - 事実: フラッシュ文言: 該当なし（app/Http/Controllers/ReviewController.php:65-70 に with() なし）
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 未ログイン: routes/web.php:48 Route::middleware('auth') → app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: 対象なし: routes/web.php:53 の {review} と app/Http/Controllers/ReviewController.php:65 Review $review の暗黙バインディング → app/Exceptions/Handler.php:55 return response()->view('errors.404', [], 404);
+  - 事実: 書籍が削除済み: app/Http/Controllers/ReviewController.php:65-70 に書籍の状態の確認なし
+  - 事実: CSRFトークンの検証で弾かれる場合: app/Http/Kernel.php:37 \App\Http\Middleware\VerifyCsrfToken::class, → app/Exceptions/Handler.php:67 return response()->view('errors.419', [], 419);
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: review_likes 追加・削除: app/Http/Controllers/ReviewController.php:67 Auth::user()->likedReviews()->toggle($review);
+  - 事実: app/Models/User.php:65-68 public function likedReviews(): BelongsToMany { return $this->belongsToMany(Review::class, 'review_likes'); }
+  - 事実: 一意制約: grep -n "unique" database/migrations/2026_09_01_115254_create_review_likes_table.php → 出力0件
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし grep -rn "Log::\|Notification::\|->notify(\|Http::\|event(\|dispatch(" app/Http/Controllers/ReviewController.php app/Http/Requests/UpdateReviewRequest.php → 出力0件
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: tests/Feature/ReviewLikeTest.php:17-27 test_like_toggle_on_off（1回目 assertDatabaseHas('review_likes', ...)、2回目 assertDatabaseMissing('review_likes', ...)）
+  - 事実: tests/Feature/ReviewLikeTest.php:30-39 test_like_on_deleted_book_review（assertSame(1, DB::table('review_likes')->where('review_id', $review->id)->count())）
+  - 事実: tests/Feature/ReviewLikeTest.php:42-47 test_guest_cannot_like_review ->assertRedirect('/login');
+
+### R049 GET|HEAD /sanctum/csrf-cookie
+- 名前: sanctum.csrf-cookie
+- 処理: Laravel\Sanctum\Http\Controllers\CsrfCookieController@show
+- ミドルウェア: web
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: vendor/laravel/sanctum/src/Http/Controllers/CsrfCookieController.php:17-24 public function show(Request $request) { if ($request->expectsJson()) { return new JsonResponse(status: 204); } return new Response(status: 204); }
+  - 事実: vendor/laravel/sanctum/src/SanctumServiceProvider.php:86-90 Route::group(['prefix' => config('sanctum.prefix', 'sanctum')], ... '/csrf-cookie', ... )->middleware('web')->name('sanctum.csrf-cookie');
+  - 事実: 外部パッケージ（laravel/sanctum）。アプリ側の参照: grep -rn "CsrfCookieController\|csrf-cookie" app config routes → 出力は config/cors.php:18 'paths' => ['api/*', 'sanctum/csrf-cookie'], の1件のみ
+  - 事実: S150 sanctum.prefix=null
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし grep -n "authorize\|Gate" vendor/laravel/sanctum/src/Http/Controllers/CsrfCookieController.php → 出力0件（ミドルウェアは web のみ）
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: 該当なし vendor/laravel/sanctum/src/Http/Controllers/CsrfCookieController.php:17-24 に検証処理なし
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: vendor/laravel/sanctum/src/Http/Controllers/CsrfCookieController.php:19-20 if ($request->expectsJson()) { return new JsonResponse(status: 204); }
+  - 事実: vendor/laravel/sanctum/src/Http/Controllers/CsrfCookieController.php:23 return new Response(status: 204);
+  - 事実: 照合R22 GET /sanctum/csrf-cookie -> 204
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 該当なし vendor/laravel/sanctum/src/Http/Controllers/CsrfCookieController.php:17-24 に失敗時の分岐なし（ルートパラメータなし・認証要求なし）
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: DB: 該当なし vendor/laravel/sanctum/src/Http/Controllers/CsrfCookieController.php:17-24 に DB の読み書きなし
+  - 事実: セッション: web グループ app/Http/Kernel.php:35 \Illuminate\Session\Middleware\StartSession::class,
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: XSRF-TOKEN クッキー: web グループ app/Http/Kernel.php:37 \App\Http\Middleware\VerifyCsrfToken::class, → vendor/laravel/framework/src/Illuminate/Foundation/Http/Middleware/VerifyCsrfToken.php:79 if ($this->shouldAddXsrfTokenCookie()) {、:206 'XSRF-TOKEN',
+  - 事実: CORS の対象パス: config/cors.php:18 'paths' => ['api/*', 'sanctum/csrf-cookie'],
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: 該当なし grep -rn "csrf-cookie\|confirm-password\|confirmed-password-status" tests → 出力0件
+
+### R050 GET|HEAD /user/confirm-password
+- 名前: password.confirm
+- 処理: Laravel\Fortify\Http\Controllers\ConfirmablePasswordController@show
+- ミドルウェア: web, App\Http\Middleware\Authenticate:web
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: vendor/laravel/fortify/src/Http/Controllers/ConfirmablePasswordController.php:40-43 public function show(Request $request) { return app(ConfirmPasswordViewResponse::class); }
+  - 事実: vendor/laravel/fortify/routes/routes.php:114-118 if ($enableViews) { Route::get(RoutePath::for('password.confirm', '/user/confirm-password'), [ConfirmablePasswordController::class, 'show']) ->middleware([config('fortify.auth_middleware', 'auth').':'.config('fortify.guard')]) ->name('password.confirm'); }
+  - 事実: 外部パッケージ（laravel/fortify）。アプリ側の上書き: grep -rn "confirmPasswordView\|confirmPasswordsUsing" app config routes → 出力0件
+  - 事実: アプリ側の設定: config/fortify.php:133 'views' => true,、config/fortify.php:18 'guard' => 'web',
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし grep -n "authorize\|Gate" vendor/laravel/fortify/src/Http/Controllers/ConfirmablePasswordController.php → 出力0件
+  - 事実: ログイン要求: vendor/laravel/fortify/routes/routes.php:116 ->middleware([config('fortify.auth_middleware', 'auth').':'.config('fortify.guard')])、S150 fortify.auth_middleware="auth"
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: 該当なし vendor/laravel/fortify/src/Http/Controllers/ConfirmablePasswordController.php:40-43 に検証処理なし
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: S150 ConfirmPasswordViewResponse bound=false
+  - 事実: ビュー登録: grep -rn "confirmPasswordView\|confirmPasswordsUsing" app config routes → 出力0件
+  - 事実: vendor/laravel/fortify/src/Fortify.php:196-198 public static function confirmPasswordView($view) { app()->singleton(ConfirmPasswordViewResponse::class, ...
+  - 事実: resources/views/auth 配下のファイル: login.blade.php・register.blade.php の2件（ls resources/views/auth の出力）
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 未ログイン: app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: 未ログイン: 照合R22 GET /user/confirm-password -> 302 http://localhost:8022/login
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: 該当なし vendor/laravel/fortify/src/Http/Controllers/ConfirmablePasswordController.php:40-43 に DB・セッションの読み書きなし
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし vendor/laravel/fortify/src/Http/Controllers/ConfirmablePasswordController.php:40-43 は app(ConfirmPasswordViewResponse::class) を返すのみ
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: 該当なし grep -rn "csrf-cookie\|confirm-password\|confirmed-password-status" tests → 出力0件
+
+### R051 POST /user/confirm-password
+- 名前: password.confirm.store
+- 処理: Laravel\Fortify\Http\Controllers\ConfirmablePasswordController@store
+- ミドルウェア: web, App\Http\Middleware\Authenticate:web
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: vendor/laravel/fortify/src/Http/Controllers/ConfirmablePasswordController.php:51-64 public function store(Request $request)
+  - 事実: vendor/laravel/fortify/src/Actions/ConfirmPassword.php:18-26 public function __invoke(StatefulGuard $guard, $user, ?string $password = null)
+  - 事実: vendor/laravel/fortify/routes/routes.php:124-126 Route::post(RoutePath::for('password.confirm', '/user/confirm-password'), [ConfirmablePasswordController::class, 'store']) ->middleware([...]) ->name('password.confirm.store');
+  - 事実: 外部パッケージ（laravel/fortify）。アプリ側の上書き: grep -rn "confirmPasswordView\|confirmPasswordsUsing" app config routes → 出力0件
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし grep -n "authorize\|Gate" vendor/laravel/fortify/src/Http/Controllers/ConfirmablePasswordController.php → 出力0件
+  - 事実: ログイン要求: vendor/laravel/fortify/routes/routes.php:125 ->middleware([config('fortify.auth_middleware', 'auth').':'.config('fortify.guard')])、S150 fortify.auth_middleware="auth"
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: 該当なし grep -n "validate\|rules" vendor/laravel/fortify/src/Http/Controllers/ConfirmablePasswordController.php vendor/laravel/fortify/src/Http/Controllers/ConfirmedPasswordStatusController.php → 出力0件
+  - 事実: 使う入力: vendor/laravel/fortify/src/Http/Controllers/ConfirmablePasswordController.php:54 $this->guard, $request->user(), $request->input('password')
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: vendor/laravel/fortify/src/Http/Controllers/ConfirmablePasswordController.php:57-59 if ($confirmed) { $request->session()->put('auth.password_confirmed_at', Date::now()->unix()); }
+  - 事実: vendor/laravel/fortify/src/Http/Responses/PasswordConfirmedResponse.php:19-21 return $request->wantsJson() ? new JsonResponse('', 201) : redirect()->intended(Fortify::redirects('password-confirmation'));
+  - 事実: S150 fortify.redirects={"login":null,"logout":null,"password-confirmation":null,"register":null,"email-verification":null,"password-reset":null}、fortify.home="\/books"
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: ConfirmPassword の結果が false の場合: vendor/laravel/fortify/src/Http/Controllers/ConfirmablePasswordController.php:61-63 return $confirmed ? app(PasswordConfirmedResponse::class) : app(FailedPasswordConfirmationResponse::class);
+  - 事実: vendor/laravel/fortify/src/Http/Responses/FailedPasswordConfirmationResponse.php:20 $message = __('The provided password was incorrect.');
+  - 事実: vendor/laravel/fortify/src/Http/Responses/FailedPasswordConfirmationResponse.php:22-25 if ($request->wantsJson()) { throw ValidationException::withMessages([ 'password' => [$message], ]); }
+  - 事実: vendor/laravel/fortify/src/Http/Responses/FailedPasswordConfirmationResponse.php:28 return back()->withErrors(['password' => $message]);
+  - 事実: 文言の翻訳: grep -rn "provided password\|password was incorrect" lang → 出力0件。S151 FailedPasswordConfirmation message => The provided password was incorrect.
+  - 事実: 未ログイン: app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: CSRFトークンの検証で弾かれる場合: app/Http/Kernel.php:37 \App\Http\Middleware\VerifyCsrfToken::class, → app/Exceptions/Handler.php:67 return response()->view('errors.419', [], 419);
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: users 読み取り: vendor/laravel/fortify/src/Actions/ConfirmPassword.php:22-25 $guard->validate([ $username => $user->{$username}, 'password' => $password, ])（config/fortify.php:48 'username' => 'email',）
+  - 事実: セッション書き込み: vendor/laravel/fortify/src/Http/Controllers/ConfirmablePasswordController.php:58 $request->session()->put('auth.password_confirmed_at', Date::now()->unix());
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし（通知・外部API・ログ） vendor/laravel/fortify/src/Http/Controllers/ConfirmablePasswordController.php:51-64 の処理は ConfirmPassword の呼び出し・セッション書き込み・応答の返却のみ
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: 該当なし grep -rn "csrf-cookie\|confirm-password\|confirmed-password-status" tests → 出力0件
+
+### R052 GET|HEAD /user/confirmed-password-status
+- 名前: password.confirmation
+- 処理: Laravel\Fortify\Http\Controllers\ConfirmedPasswordStatusController@show
+- ミドルウェア: web, App\Http\Middleware\Authenticate:web
+- F1: 処理本体（コントローラーのメソッドの行範囲）
+  - 事実: vendor/laravel/fortify/src/Http/Controllers/ConfirmedPasswordStatusController.php:17-34 public function show(Request $request)
+  - 事実: vendor/laravel/fortify/routes/routes.php:120-122 Route::get(RoutePath::for('password.confirmation', '/user/confirmed-password-status'), [ConfirmedPasswordStatusController::class, 'show']) ->middleware([...]) ->name('password.confirmation');
+  - 事実: 外部パッケージ（laravel/fortify）。アプリ側の参照: grep -rn "ConfirmedPasswordStatusController\|confirmed-password-status" app config routes → 出力0件
+  - 事実: アプリ側の設定: config/auth.php:113 'password_timeout' => 10800,（S150 auth.password_timeout=10800）
+- F2: 認可（Policy・Gate・所有者の確認）
+  - 事実: 該当なし grep -n "authorize\|Gate" vendor/laravel/fortify/src/Http/Controllers/ConfirmedPasswordStatusController.php → 出力0件
+  - 事実: ログイン要求: vendor/laravel/fortify/routes/routes.php:121 ->middleware([config('fortify.auth_middleware', 'auth').':'.config('fortify.guard')])
+- F3: 入力検証（ルール全件とメッセージ全件）
+  - 事実: 該当なし grep -n "validate\|rules" vendor/laravel/fortify/src/Http/Controllers/ConfirmablePasswordController.php vendor/laravel/fortify/src/Http/Controllers/ConfirmedPasswordStatusController.php → 出力0件
+  - 事実: 使う入力: vendor/laravel/fortify/src/Http/Controllers/ConfirmedPasswordStatusController.php:25-27 $confirmed = $lastConfirmed < $request->input( 'seconds', config('auth.password_timeout', 900) );
+- F4: 成功時の応答（表示するビューと渡す変数／リダイレクト先とフラッシュ文言／JSONの形とステータス）
+  - 事実: vendor/laravel/fortify/src/Http/Controllers/ConfirmedPasswordStatusController.php:29-33 return response()->json([ 'confirmed' => $confirmed, ], headers: array_filter([ 'X-Retry-After' => $confirmed ? $lastConfirmed : null, ]));
+- F5: 失敗時の応答（検証失敗・未ログイン・権限なし・対象なし・削除済み・その他の例外。場合ごとに）
+  - 事実: 未ログイン: app/Http/Middleware/Authenticate.php:15 return $request->expectsJson() ? null : route('login');
+  - 事実: 未ログイン: 照合R22 GET /user/confirmed-password-status -> 302 http://localhost:8022/login
+  - 事実: 未ログインで JSON を求める場合のアプリ側処理: app/Exceptions/Handler.php:41-45 AuthenticationException の renderable は if ($request->is('api/*')) の場合のみ
+- F6: 読み書きするデータ（テーブル・条件・並び順・件数・削除済みの扱い）
+  - 事実: セッション読み取り: vendor/laravel/fortify/src/Http/Controllers/ConfirmedPasswordStatusController.php:19-21 $lastConfirmation = $request->session()->get( 'auth.password_confirmed_at', 0 );
+  - 事実: DB: 該当なし vendor/laravel/fortify/src/Http/Controllers/ConfirmedPasswordStatusController.php:17-34 に DB の読み書きなし
+- F7: 副作用（通知・外部API・ログほか）
+  - 事実: 該当なし vendor/laravel/fortify/src/Http/Controllers/ConfirmedPasswordStatusController.php:17-34 はセッション値の読み取りと JSON 応答のみ
+- F8: この挙動を確かめるテスト（ファイル:行 とテスト名）
+  - 事実: 該当なし grep -rn "csrf-cookie\|confirm-password\|confirmed-password-status" tests → 出力0件

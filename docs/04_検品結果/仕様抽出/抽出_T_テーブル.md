@@ -1,0 +1,567 @@
+# 抽出台帳 T テーブル（SHOW TABLES 全件）
+
+- 件数: 13
+- 記入規則: docs/02_発注書/98_実装仕様抽出調査.md の §6
+- ブロック・F行の削除、並べ替え、F行本文と「- 」で始まる入口情報の編集は禁止。「事実:」行の記入と追加のみ行う。
+
+---
+
+### T001 book_genre
+- F1: 対応するモデル（ファイル）
+  - 事実: 該当なし grep -rn "protected \$table" app/Models → 出力0件（book_genre 専用のモデルファイルは無い。中間テーブルとして2つのリレーションから参照される）
+  - 事実: app/Models/Book.php:42 return $this->belongsToMany(Genre::class, 'book_genre');
+  - 事実: app/Models/Genre.php:17 return $this->belongsToMany(Book::class, 'book_genre');
+- F2: リレーション全件
+  - 事実: app/Models/Book.php:40-43 public function genres(): BelongsToMany { return $this->belongsToMany(Genre::class, 'book_genre'); }
+  - 事実: app/Models/Genre.php:15-18 public function books(): BelongsToMany { return $this->belongsToMany(Book::class, 'book_genre'); }
+  - 事実: 該当なし grep -n "withPivot\|withTimestamps\|using(" app/Models/Book.php app/Models/Genre.php → 出力0件
+- F3: casts・fillable・guarded・SoftDeletes・アクセサ
+  - 事実: 該当なし（book_genre 専用モデル無し） grep -rn "guarded" app/Models → 出力0件
+  - 事実: 照合R14 `book_id` bigint unsigned NOT NULL, `genre_id` bigint unsigned NOT NULL, PRIMARY KEY (`book_id`,`genre_id`)（created_at/updated_at 列なし）
+- F4: 外部キーと削除時の挙動（マイグレーションの行）
+  - 事実: database/migrations/2026_09_01_115252_create_book_genre_table.php:15 $table->foreignId('book_id')->constrained()->cascadeOnDelete();
+  - 事実: database/migrations/2026_09_01_115252_create_book_genre_table.php:16 $table->foreignId('genre_id')->constrained()->restrictOnDelete();
+  - 事実: database/migrations/2026_09_01_115252_create_book_genre_table.php:17 $table->primary(['book_id', 'genre_id']);
+  - 事実: 照合R14 CONSTRAINT `book_genre_book_id_foreign` FOREIGN KEY (`book_id`) REFERENCES `books` (`id`) ON DELETE CASCADE
+  - 事実: 照合R14 CONSTRAINT `book_genre_genre_id_foreign` FOREIGN KEY (`genre_id`) REFERENCES `genres` (`id`) ON DELETE RESTRICT
+  - 事実: app/Models/Book.php:14 use HasFactory, SoftDeletes;
+  - 事実: 該当なし grep -rn "forceDelete" app → 出力0件
+- F5: 初期データ（シーダー・ファクトリの行と R16 の件数）
+  - 事実: database/seeders/BookSeeder.php:46 $genreIds = Genre::whereIn('name', $data['genres'])->pluck('id')->all();
+  - 事実: database/seeders/BookSeeder.php:47 $book->genres()->sync($genreIds);
+  - 事実: database/seeders/BookSeeder.php:20-30 各書籍の 'genres' => ['小説'] / ['ビジネス', '自己啓発'] / ['技術書'] / ['ビジネス', '自己啓発'] / ['小説'] / ['歴史', '科学'] / ['技術書'] / ['自己啓発'] / ['小説'] / ['ビジネス', '科学'] / ['ビジネス', '歴史']
+  - 事実: 該当なし grep -rln "book_genre" database/factories → 出力0件
+  - 事実: 照合R15 book_genre 16
+  - 事実: 照合R16 book_id genre_id 1 1 / 2 2 / 2 4 / 3 3 / 4 2 / 4 4 / 5 1 / 6 6 / 6 7 / 7 3 / 8 4 / 9 1 / 10 2 / 10 7 / 11 2 / 11 6
+- F6: このテーブルを読み書きする箇所（検索コマンドと結果）
+  - 事実: S171（grep -rnE "Genre::|genres\(\)|->genres\b|book_genre|'genres|genres\.|genres," app routes）の出力のうち book_genre を読み書きする行は次のとおり
+  - 事実: app/Http/Controllers/BookController.php:132 $book->genres()->sync($request->genres);（Web 書籍登録時の書き込み）
+  - 事実: app/Http/Controllers/BookController.php:176 $book->genres()->sync($request->genres);（Web 書籍更新時の書き込み）
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:65 $book->genres()->sync($request->genres);（API 書籍登録時の書き込み）
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:84 $book->genres()->sync($request->genres);（API 書籍更新時の書き込み）
+  - 事実: app/Http/Controllers/BookController.php:37-39 $query->whereHas('genres', function ($q) use ($genre) { $q->where('genres.id', $genre); });（読み取り・絞り込み）
+  - 事実: app/Http/Controllers/BookController.php:25 $query = Book::query()->with('genres');（読み取り）
+  - 事実: app/Http/Controllers/BookController.php:146 'genres',（show の load）
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:27 $books = Book::with('genres')
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:37 $query->whereHas('genres', fn ($q) => $q->where('genres.id', $genreId));
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:51 $book->load(['genres', 'reviews.user'])
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:70 $book->load('genres')->loadAvg('reviews', 'rating')->loadCount('reviews');
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:87 $book->load('genres')->loadAvg('reviews', 'rating')->loadCount('reviews');
+  - 事実: app/Http/Controllers/GenreController.php:18 $genres = Genre::withCount('books')->orderBy('id')->get();
+  - 事実: app/Http/Controllers/GenreController.php:46 $books = $genre->books()->with('genres')->latest('books.created_at')->paginate(10);
+  - 事実: app/Http/Controllers/GenreController.php:74 if ($genre->books()->withTrashed()->exists()) {
+  - 事実: app/Http/Controllers/ReportController.php:24 ->with('book.genres')
+  - 事実: app/Http/Controllers/ReportController.php:101 ->flatMap(fn (Review $review) => $review->book->genres->map(fn (Genre $genre): array => [
+  - 事実: 該当なし grep -rn "detach(\|attach(" app → 出力0件（書き込みは sync のみ）
+
+### T002 books
+- F1: 対応するモデル（ファイル）
+  - 事実: app/Models/Book.php:12 class Book extends Model
+- F2: リレーション全件
+  - 事実: app/Models/Book.php:35-38 public function user(): BelongsTo { return $this->belongsTo(User::class); }
+  - 事実: app/Models/Book.php:40-43 public function genres(): BelongsToMany { return $this->belongsToMany(Genre::class, 'book_genre'); }
+  - 事実: app/Models/Book.php:45-48 public function reviews(): HasMany { return $this->hasMany(Review::class); }
+  - 事実: app/Models/Book.php:50-53 public function favoritedByUsers(): BelongsToMany { return $this->belongsToMany(User::class, 'favorites'); }
+  - 事実: 逆側 app/Models/User.php:50-53 public function books(): HasMany { return $this->hasMany(Book::class); }
+  - 事実: 逆側 app/Models/User.php:60-63 public function favoriteBooks(): BelongsToMany { return $this->belongsToMany(Book::class, 'favorites'); }
+  - 事実: 逆側 app/Models/Genre.php:15-18 public function books(): BelongsToMany { return $this->belongsToMany(Book::class, 'book_genre'); }
+  - 事実: 逆側 app/Models/Review.php:21-24 public function book(): BelongsTo { return $this->belongsTo(Book::class)->withTrashed(); }
+  - 事実: 逆側 app/Models/ReadingPlan.php:38-42 public function book(): BelongsTo { // 論理削除済みの書籍に紐づく読書計画も一覧・編集で表示するため（CLAUDE.md §9-1） return $this->belongsTo(Book::class)->withTrashed(); }
+- F3: casts・fillable・guarded・SoftDeletes・アクセサ
+  - 事実: app/Models/Book.php:16-24 protected $fillable = [ 'title', 'author', 'isbn', 'published_date', 'description', 'image_url', 'user_id', ];
+  - 事実: app/Models/Book.php:31-33 protected $casts = [ 'published_date' => 'date', ];
+  - 事実: app/Models/Book.php:10 use Illuminate\Database\Eloquent\SoftDeletes;
+  - 事実: app/Models/Book.php:14 use HasFactory, SoftDeletes;
+  - 事実: 該当なし grep -n "guarded" app/Models/Book.php → 出力0件
+  - 事実: 該当なし grep -n "Attribute" app/Models/Book.php → 出力0件（アクセサ無し）
+- F4: 外部キーと削除時の挙動（マイグレーションの行）
+  - 事実: database/migrations/2026_09_01_115251_create_books_table.php:16 $table->string('title', 255);
+  - 事実: database/migrations/2026_09_01_115251_create_books_table.php:17 $table->string('author', 255);
+  - 事実: database/migrations/2026_09_01_115251_create_books_table.php:18 $table->string('isbn', 13)->unique();
+  - 事実: database/migrations/2026_09_01_115251_create_books_table.php:19 $table->date('published_date');
+  - 事実: database/migrations/2026_09_01_115251_create_books_table.php:20 $table->text('description')->nullable();
+  - 事実: database/migrations/2026_09_01_115251_create_books_table.php:21 $table->string('image_url', 255)->nullable();
+  - 事実: database/migrations/2026_09_01_115251_create_books_table.php:22 $table->foreignId('user_id')->constrained()->restrictOnDelete();
+  - 事実: database/migrations/2026_09_01_115251_create_books_table.php:23 $table->softDeletes();
+  - 事実: database/migrations/2026_09_11_111642_make_isbn_and_published_date_nullable_on_books_table.php:15 $table->string('isbn', 13)->nullable()->change();
+  - 事実: database/migrations/2026_09_11_111642_make_isbn_and_published_date_nullable_on_books_table.php:16 $table->date('published_date')->nullable()->change();
+  - 事実: 照合R14 CONSTRAINT `books_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT
+  - 事実: 照合R14 `isbn` varchar(13) COLLATE utf8mb4_unicode_ci DEFAULT NULL, / `published_date` date DEFAULT NULL, / UNIQUE KEY `books_isbn_unique` (`isbn`)
+  - 事実: books を参照する外部キー: 照合R14 `book_genre_book_id_foreign` ... REFERENCES `books` (`id`) ON DELETE CASCADE / `favorites_book_id_foreign` ... ON DELETE CASCADE / `reading_plans_book_id_foreign` ... ON DELETE CASCADE / `reviews_book_id_foreign` ... ON DELETE CASCADE
+  - 事実: app/Http/Controllers/BookController.php:189 $book->delete();（SoftDeletes により deleted_at を設定）
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:99 $book->delete();
+  - 事実: app/Http/Controllers/BookController.php:201 $book->restore();
+  - 事実: 該当なし grep -rn "forceDelete" app → 出力0件
+- F5: 初期データ（シーダー・ファクトリの行と R16 の件数）
+  - 事実: database/seeders/DatabaseSeeder.php:17 BookSeeder::class,
+  - 事実: database/seeders/BookSeeder.php:20 ['title' => '吾輩は猫である', 'author' => '夏目漱石', 'isbn' => '9784101010014', 'published_date' => '1905-01-01', 'genres' => ['小説'], ...]
+  - 事実: database/seeders/BookSeeder.php:21 ['title' => '人を動かす', 'author' => 'D・カーネギー', 'isbn' => '9784422100524', 'published_date' => '1936-10-01', 'genres' => ['ビジネス', '自己啓発'], ...]
+  - 事実: database/seeders/BookSeeder.php:22 ['title' => 'リーダブルコード', 'author' => 'Dustin Boswell', 'isbn' => '9784873115658', 'published_date' => '2012-06-23', 'genres' => ['技術書'], ...]
+  - 事実: database/seeders/BookSeeder.php:23 ['title' => '7つの習慣', 'author' => 'スティーブン・R・コヴィー', 'isbn' => '9784863940246', 'published_date' => '2013-08-30', 'genres' => ['ビジネス', '自己啓発'], ...]
+  - 事実: database/seeders/BookSeeder.php:24 ['title' => '坊っちゃん', 'author' => '夏目漱石', 'isbn' => '9784101010021', 'published_date' => '1906-04-01', 'genres' => ['小説'], ...]
+  - 事実: database/seeders/BookSeeder.php:25 ['title' => 'サピエンス全史', 'author' => 'ユヴァル・ノア・ハラリ', 'isbn' => '9784309226712', 'published_date' => '2016-09-08', 'genres' => ['歴史', '科学'], ...]
+  - 事実: database/seeders/BookSeeder.php:26 ['title' => 'Clean Code', 'author' => 'Robert C. Martin', 'isbn' => '9784048930598', 'published_date' => '2017-12-18', 'genres' => ['技術書'], ...]
+  - 事実: database/seeders/BookSeeder.php:27 ['title' => '嫌われる勇気', 'author' => '岸見一郎・古賀史健', 'isbn' => '9784478025819', 'published_date' => '2013-12-13', 'genres' => ['自己啓発'], ...]
+  - 事実: database/seeders/BookSeeder.php:28 ['title' => '火花', 'author' => '又吉直樹', 'isbn' => '9784163902302', 'published_date' => '2015-03-11', 'genres' => ['小説'], ...]
+  - 事実: database/seeders/BookSeeder.php:29 ['title' => 'FACTFULNESS', 'author' => 'ハンス・ロスリング', 'isbn' => '9784822289607', 'published_date' => '2019-01-11', 'genres' => ['ビジネス', '科学'], ...]
+  - 事実: database/seeders/BookSeeder.php:30 ['title' => 'コンテナ物語', 'author' => 'マルク・レビンソン', 'isbn' => '9784822251468', 'published_date' => '2007-01-18', 'genres' => ['ビジネス', '歴史'], ...]
+  - 事実: database/seeders/BookSeeder.php:34-35 $book = Book::firstOrCreate( ['isbn' => $data['isbn']],
+  - 事実: database/seeders/BookSeeder.php:41 'image_url' => 'https://placehold.co/200x300/e2e8f0/475569?text='.($index + 1),
+  - 事実: database/seeders/BookSeeder.php:42 'user_id' => $users->random()->id,
+  - 事実: database/factories/BookFactory.php:21-27 'title' => fake()->sentence(3), 'author' => fake()->name(), 'isbn' => fake()->unique()->numerify('978##########'), 'published_date' => fake()->date('Y-m-d'), 'description' => fake()->paragraph(), 'image_url' => 'https://placehold.co/200x300', 'user_id' => User::factory(),
+  - 事実: 照合R15 books 11
+  - 事実: 照合R100 id 1〜11 の title: 吾輩は猫である / 人を動かす / リーダブルコード / 7つの習慣 / 坊っちゃん / サピエンス全史 / Clean Code / 嫌われる勇気 / 火花 / FACTFULNESS / コンテナ物語、user_id: 4 / 4 / 1 / 2 / 4 / 3 / 5 / 5 / 5 / 3 / 3、deleted_at: 全行 NULL
+- F6: このテーブルを読み書きする箇所（検索コマンドと結果）
+  - 事実: S170（grep -rnE "Book::|->books\(\)|->book\(\)|->book\b|withTrashed|onlyTrashed|->restore\(\)|forceDelete|books,|'books'" app routes）の出力のうち books を読み書きする行は次のとおり
+  - 事実: app/Http/Controllers/BookController.php:25 $query = Book::query()->with('genres');（一覧。キーワード:30-31 title/author の like、並び順:43-48 oldest/title/rating/既定 created_at 降順、件数:50 paginate(10)）
+  - 事実: app/Http/Controllers/BookController.php:131 $book = Book::create($request->validated() + ['user_id' => Auth::id()]);
+  - 事実: app/Http/Controllers/BookController.php:175 $book->update($request->validated());
+  - 事実: app/Http/Controllers/BookController.php:189 $book->delete();
+  - 事実: app/Http/Controllers/BookController.php:201 $book->restore();
+  - 事実: routes/web.php:36 Route::get('/books/{book}', [BookController::class, 'show'])->name('books.show')->withTrashed();
+  - 事実: routes/web.php:44 ->name('books.restore')->withTrashed();
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:27-41 $books = Book::with('genres') ->withAvg('reviews', 'rating') ->withCount('reviews') ... ->latest() ->paginate($perPage)
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:64 $book = Book::create($request->validated() + ['user_id' => Auth::id()]);
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:83 $book->update($request->validated());
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:99 $book->delete();
+  - 事実: app/Http/Controllers/GenreController.php:46 $books = $genre->books()->with('genres')->latest('books.created_at')->paginate(10);
+  - 事実: app/Http/Controllers/GenreController.php:74 if ($genre->books()->withTrashed()->exists()) {
+  - 事実: app/Http/Controllers/FavoriteController.php:17 $books = Auth::user()->favoriteBooks()->latest('books.created_at')->paginate(10);
+  - 事実: app/Http/Controllers/RankingController.php:15-21 $rankedBooks = Book::withAvg('reviews', 'rating') ->withCount('reviews') ->whereHas('reviews') ->orderByDesc('reviews_avg_rating') ->orderBy('id') ->limit(10) ->get();
+  - 事実: app/Http/Controllers/ReadingPlanController.php:38 $books = Book::orderBy('title')->get();
+  - 事実: app/Http/Controllers/ReportController.php:24 ->with('book.genres')
+  - 事実: app/Http/Controllers/ReviewController.php:56 $book = $review->book;
+  - 事実: app/Notifications/ReadingPlanReminder.php:61 $title = $this->plan->book->title;
+  - 事実: app/Http/Requests/StoreBookRequest.php:27 'isbn' => ['nullable', 'string', 'regex:/^[0-9]{13}$/', 'unique:books,isbn'],
+  - 事実: app/Http/Requests/UpdateBookRequest.php:32 Rule::unique('books', 'isbn')->ignore($this->route('book')),
+  - 事実: app/Http/Requests/Api/V1/StoreApiBookRequest.php:17 'isbn' => ['required', 'string', 'regex:/^[0-9]{13}$/', 'unique:books,isbn'],
+  - 事実: app/Http/Requests/Api/V1/UpdateApiBookRequest.php:23 Rule::unique('books', 'isbn')->ignore($this->route('book')),
+  - 事実: app/Http/Requests/ReadingPlanStoreRequest.php:29 'book_id' => ['required', 'exists:books,id'],
+  - 事実: app/Providers/AuthServiceProvider.php:16 \App\Models\Book::class => \App\Policies\BookPolicy::class,
+  - 事実: app/Policies/BookPolicy.php:15 return $user->id === $book->user_id && ! $book->trashed();
+  - 事実: app/Policies/BookPolicy.php:31 return $user->id === $book->user_id && $book->trashed();
+
+### T003 failed_jobs
+- F1: 対応するモデル（ファイル）
+  - 事実: 該当なし grep -rn "failed_jobs" app/Models → 出力0件（モデルファイル無し）
+- F2: リレーション全件
+  - 事実: 該当なし grep -rn "failed_jobs" app/Models → 出力0件
+- F3: casts・fillable・guarded・SoftDeletes・アクセサ
+  - 事実: 該当なし grep -rn "failed_jobs" app/Models → 出力0件
+- F4: 外部キーと削除時の挙動（マイグレーションの行）
+  - 事実: database/migrations/2019_08_19_000000_create_failed_jobs_table.php:16 $table->string('uuid')->unique();
+  - 事実: database/migrations/2019_08_19_000000_create_failed_jobs_table.php:17 $table->text('connection');
+  - 事実: database/migrations/2019_08_19_000000_create_failed_jobs_table.php:18 $table->text('queue');
+  - 事実: database/migrations/2019_08_19_000000_create_failed_jobs_table.php:19 $table->longText('payload');
+  - 事実: database/migrations/2019_08_19_000000_create_failed_jobs_table.php:20 $table->longText('exception');
+  - 事実: database/migrations/2019_08_19_000000_create_failed_jobs_table.php:21 $table->timestamp('failed_at')->useCurrent();
+  - 事実: 該当なし（外部キー無し） 照合R14 failed_jobs の CREATE TABLE に CONSTRAINT 行 0件
+- F5: 初期データ（シーダー・ファクトリの行と R16 の件数）
+  - 事実: 該当なし grep -rln "failed_jobs\|password_reset_tokens\|personal_access_tokens\|notifications\|DatabaseNotification" database/seeders database/factories → 出力0件
+  - 事実: 照合R15 failed_jobs 0
+- F6: このテーブルを読み書きする箇所（検索コマンドと結果）
+  - 事実: S177 config/queue.php:106 'table' => 'failed_jobs',
+  - 事実: 該当なし grep -rn "failed_jobs" app routes → 出力0件（S177 の出力に app/routes の行なし）
+
+### T004 favorites
+- F1: 対応するモデル（ファイル）
+  - 事実: 該当なし grep -rn "protected \$table" app/Models → 出力0件（favorites 専用のモデルファイルは無い）
+  - 事実: app/Models/User.php:62 return $this->belongsToMany(Book::class, 'favorites');
+  - 事実: app/Models/Book.php:52 return $this->belongsToMany(User::class, 'favorites');
+- F2: リレーション全件
+  - 事実: app/Models/User.php:60-63 public function favoriteBooks(): BelongsToMany { return $this->belongsToMany(Book::class, 'favorites'); }
+  - 事実: app/Models/Book.php:50-53 public function favoritedByUsers(): BelongsToMany { return $this->belongsToMany(User::class, 'favorites'); }
+  - 事実: 該当なし grep -n "withPivot\|withTimestamps" app/Models/User.php app/Models/Book.php → 出力0件
+- F3: casts・fillable・guarded・SoftDeletes・アクセサ
+  - 事実: 該当なし（favorites 専用モデル無し） grep -rn "guarded" app/Models → 出力0件
+  - 事実: 照合R14 `user_id` bigint unsigned NOT NULL, `book_id` bigint unsigned NOT NULL, PRIMARY KEY (`user_id`,`book_id`)（created_at/updated_at 列なし）
+- F4: 外部キーと削除時の挙動（マイグレーションの行）
+  - 事実: database/migrations/2026_09_01_115253_create_favorites_table.php:15 $table->foreignId('user_id')->constrained()->restrictOnDelete();
+  - 事実: database/migrations/2026_09_01_115253_create_favorites_table.php:16 $table->foreignId('book_id')->constrained()->cascadeOnDelete();
+  - 事実: database/migrations/2026_09_01_115253_create_favorites_table.php:17 $table->primary(['user_id', 'book_id']);
+  - 事実: 照合R14 CONSTRAINT `favorites_book_id_foreign` FOREIGN KEY (`book_id`) REFERENCES `books` (`id`) ON DELETE CASCADE
+  - 事実: 照合R14 CONSTRAINT `favorites_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT
+  - 事実: app/Models/Book.php:14 use HasFactory, SoftDeletes;
+  - 事実: 該当なし grep -rn "forceDelete" app → 出力0件
+- F5: 初期データ（シーダー・ファクトリの行と R16 の件数）
+  - 事実: database/seeders/DatabaseSeeder.php:19 FavoriteSeeder::class,
+  - 事実: database/seeders/FavoriteSeeder.php:16 $users = User::orderBy('id')->get();
+  - 事実: database/seeders/FavoriteSeeder.php:17 $bookIds = Book::orderBy('id')->pluck('id')->all();
+  - 事実: database/seeders/FavoriteSeeder.php:21 $sizes = [4, 3, 5, 3, 4];
+  - 事実: database/seeders/FavoriteSeeder.php:27 $favorites[] = $bookIds[($index * 2 + $j) % $total];
+  - 事実: database/seeders/FavoriteSeeder.php:30 $user->favoriteBooks()->syncWithoutDetaching($favorites);
+  - 事実: 該当なし grep -rln "favorites\|favorite" database/factories → 出力0件
+  - 事実: 照合R15 favorites 19
+  - 事実: 照合R16 user_id book_id 1 1 / 1 2 / 1 3 / 1 4 / 2 3 / 2 4 / 2 5 / 3 5 / 3 6 / 3 7 / 3 8 / 3 9 / 4 7 / 4 8 / 4 9 / 5 1 / 5 9 / 5 10 / 5 11
+- F6: このテーブルを読み書きする箇所（検索コマンドと結果）
+  - 事実: S173（grep -rnE "favoriteBooks|favoritedByUsers|'favorites'" app routes resources/views）の出力のうち favorites を読み書きする行は次のとおり
+  - 事実: app/Http/Controllers/FavoriteController.php:17 $books = Auth::user()->favoriteBooks()->latest('books.created_at')->paginate(10);（読み取り）
+  - 事実: app/Http/Controllers/FavoriteController.php:27 Auth::user()->favoriteBooks()->toggle($book);（書き込み・追加と解除）
+  - 事実: resources/views/books/show.blade.php:39 @if(Auth::user()->favoriteBooks->contains($book->id))（読み取り）
+  - 事実: S173 favoritedByUsers の出現は app/Models/Book.php:50 の定義行のみ
+
+### T005 genres
+- F1: 対応するモデル（ファイル）
+  - 事実: app/Models/Genre.php:9 class Genre extends Model
+- F2: リレーション全件
+  - 事実: app/Models/Genre.php:15-18 public function books(): BelongsToMany { return $this->belongsToMany(Book::class, 'book_genre'); }
+  - 事実: 逆側 app/Models/Book.php:40-43 public function genres(): BelongsToMany { return $this->belongsToMany(Genre::class, 'book_genre'); }
+- F3: casts・fillable・guarded・SoftDeletes・アクセサ
+  - 事実: app/Models/Genre.php:13 protected $fillable = ['name'];
+  - 事実: app/Models/Genre.php:11 use HasFactory;
+  - 事実: 該当なし grep -n "casts\|guarded\|SoftDeletes\|Attribute" app/Models/Genre.php → 出力0件
+- F4: 外部キーと削除時の挙動（マイグレーションの行）
+  - 事実: database/migrations/2026_09_01_115250_create_genres_table.php:16 $table->string('name', 255)->unique();
+  - 事実: 該当なし（genres 自身の外部キー無し） 照合R14 genres の CREATE TABLE に CONSTRAINT 行 0件
+  - 事実: genres を参照する外部キー: 照合R14 CONSTRAINT `book_genre_genre_id_foreign` FOREIGN KEY (`genre_id`) REFERENCES `genres` (`id`) ON DELETE RESTRICT
+  - 事実: database/migrations/2026_09_01_115252_create_book_genre_table.php:16 $table->foreignId('genre_id')->constrained()->restrictOnDelete();
+  - 事実: app/Http/Controllers/GenreController.php:74-77 if ($genre->books()->withTrashed()->exists()) { return redirect()->route('genres.index') ->with('error', 'このジャンルに紐づく書籍が存在するため削除できません'); }
+  - 事実: app/Http/Controllers/GenreController.php:79 $genre->delete();（物理削除）
+- F5: 初期データ（シーダー・ファクトリの行と R16 の件数）
+  - 事実: database/seeders/DatabaseSeeder.php:16 GenreSeeder::class,
+  - 事実: database/seeders/GenreSeeder.php:15 $genres = ['小説', 'ビジネス', '技術書', '自己啓発', 'エッセイ', '歴史', '科学', '芸術', '料理', '旅行'];
+  - 事実: database/seeders/GenreSeeder.php:18 Genre::firstOrCreate(['name' => $genre]);
+  - 事実: database/factories/GenreFactory.php:20 'name' => fake()->unique()->word(),
+  - 事実: 照合R15 genres 10
+  - 事実: 照合R100 id name 1 小説 / 2 ビジネス / 3 技術書 / 4 自己啓発 / 5 エッセイ / 6 歴史 / 7 科学 / 8 芸術 / 9 料理 / 10 旅行
+- F6: このテーブルを読み書きする箇所（検索コマンドと結果）
+  - 事実: S171（grep -rnE "Genre::|genres\(\)|->genres\b|book_genre|'genres|genres\.|genres," app routes）の出力のうち genres を読み書きする行は次のとおり
+  - 事実: app/Http/Controllers/GenreController.php:18 $genres = Genre::withCount('books')->orderBy('id')->get();
+  - 事実: app/Http/Controllers/GenreController.php:36 Genre::create($request->validated());
+  - 事実: app/Http/Controllers/GenreController.php:64 $genre->update($request->validated());
+  - 事実: app/Http/Controllers/GenreController.php:79 $genre->delete();
+  - 事実: app/Http/Controllers/BookController.php:54 'genres' => Genre::all(),
+  - 事実: app/Http/Controllers/BookController.php:120 $genres = Genre::orderBy('id')->get();
+  - 事実: app/Http/Controllers/BookController.php:162 $genres = Genre::orderBy('id')->get();
+  - 事実: app/Http/Controllers/ReportController.php:101-104 $review->book->genres->map(fn (Genre $genre): array => [ 'id' => $genre->id, 'name' => $genre->name, 'rating' => $review->rating,
+  - 事実: app/Http/Requests/StoreGenreRequest.php:25 'name' => ['required', 'string', 'max:255', 'unique:genres,name'],
+  - 事実: app/Http/Requests/UpdateGenreRequest.php:30 Rule::unique('genres', 'name')->ignore($this->route('genre')),
+  - 事実: app/Http/Requests/StoreBookRequest.php:32 'genres.*' => ['exists:genres,id'],
+  - 事実: app/Http/Requests/UpdateBookRequest.php:38 'genres.*' => ['exists:genres,id'],
+  - 事実: app/Http/Requests/Api/V1/StoreApiBookRequest.php:22 'genres.*' => ['exists:genres,id'],
+  - 事実: app/Http/Requests/Api/V1/UpdateApiBookRequest.php:29 'genres.*' => ['exists:genres,id'],
+  - 事実: app/Http/Requests/Api/V1/IndexBookRequest.php:16 'genre_id' => ['nullable', 'integer', 'exists:genres,id'],
+  - 事実: app/Http/Resources/BookListResource.php:26 'genres' => GenreResource::collection($this->whenLoaded('genres')),
+  - 事実: app/Http/Resources/BookResource.php:27 'genres' => GenreResource::collection($this->whenLoaded('genres')),
+  - 事実: routes/web.php:61 Route::resource('genres', GenreController::class);
+
+### T006 migrations
+- F1: 対応するモデル（ファイル）
+  - 事実: 該当なし grep -rn "migrations" app/Models → 出力0件（モデルファイル無し）
+- F2: リレーション全件
+  - 事実: 該当なし grep -rn "migrations" app/Models → 出力0件
+- F3: casts・fillable・guarded・SoftDeletes・アクセサ
+  - 事実: 該当なし grep -rn "migrations" app/Models → 出力0件
+- F4: 外部キーと削除時の挙動（マイグレーションの行）
+  - 事実: 該当なし（migrations テーブルを作るマイグレーションファイルは database/migrations に無い） grep -rn "Schema::create('migrations'" database/migrations → 出力0件
+  - 事実: 照合R14 `id` int unsigned NOT NULL AUTO_INCREMENT, `migration` varchar(255) ... NOT NULL, `batch` int NOT NULL, PRIMARY KEY (`id`)（CONSTRAINT 行 0件）
+  - 事実: S177 config/database.php:109 'migrations' => 'migrations',
+- F5: 初期データ（シーダー・ファクトリの行と R16 の件数）
+  - 事実: 該当なし（シーダー・ファクトリで書き込む行無し） grep -rn "migrations" database/seeders database/factories → 出力0件
+  - 事実: 照合R15 migrations 14
+  - 事実: S178 1 2014_10_12_000000_create_users_table 1
+  - 事実: S178 2 2014_10_12_100000_create_password_reset_tokens_table 1
+  - 事実: S178 3 2014_10_12_200000_add_two_factor_columns_to_users_table 1
+  - 事実: S178 4 2019_08_19_000000_create_failed_jobs_table 1
+  - 事実: S178 5 2019_12_14_000001_create_personal_access_tokens_table 1
+  - 事実: S178 6 2026_09_01_115250_create_genres_table 1
+  - 事実: S178 7 2026_09_01_115251_create_books_table 1
+  - 事実: S178 8 2026_09_01_115251_create_reviews_table 1
+  - 事実: S178 9 2026_09_01_115252_create_book_genre_table 1
+  - 事実: S178 10 2026_09_01_115253_create_favorites_table 1
+  - 事実: S178 11 2026_09_01_115254_create_review_likes_table 1
+  - 事実: S178 12 2026_09_11_111642_make_isbn_and_published_date_nullable_on_books_table 1
+  - 事実: S178 13 2026_09_15_000000_create_reading_plans_table 1
+  - 事実: S178 14 2026_09_15_113741_create_notifications_table 1
+- F6: このテーブルを読み書きする箇所（検索コマンドと結果）
+  - 事実: S177 config/database.php:109 'migrations' => 'migrations',
+  - 事実: 該当なし grep -rn "migrations" app routes → 出力0件
+
+### T007 notifications
+- F1: 対応するモデル（ファイル）
+  - 事実: 該当なし grep -rn "notifications" app/Models → 出力0件（アプリ側のモデルファイル無し）
+  - 事実: app/Http/Controllers/NotificationController.php:6 use Illuminate\Notifications\DatabaseNotification;
+  - 事実: app/Models/User.php:10 use Illuminate\Notifications\Notifiable;
+  - 事実: app/Models/User.php:15 use HasApiTokens, HasFactory, Notifiable;
+- F2: リレーション全件
+  - 事実: app/Models/User.php:15 use HasApiTokens, HasFactory, Notifiable;（User から notifications()・unreadNotifications を使用）
+  - 事実: 該当なし grep -rn "morphMany\|morphTo" app/Models → 出力0件（アプリ側で定義したリレーション無し）
+  - 事実: 照合R14 KEY `notifications_notifiable_type_notifiable_id_index` (`notifiable_type`,`notifiable_id`)
+- F3: casts・fillable・guarded・SoftDeletes・アクセサ
+  - 事実: 該当なし（アプリ側モデル無し） grep -rn "notifications" app/Models → 出力0件
+  - 事実: app/Notifications/ReadingPlanReminder.php:24-27 public function via(object $notifiable): array { return ['database']; }
+  - 事実: app/Notifications/ReadingPlanReminder.php:36-41 return [ 'timing' => $this->timing->value, 'title' => $this->title(), 'body' => $this->body(), 'reading_plan_id' => $this->plan->id, ];（data 列へ保存する内容）
+- F4: 外部キーと削除時の挙動（マイグレーションの行）
+  - 事実: database/migrations/2026_09_15_113741_create_notifications_table.php:15 $table->uuid('id')->primary();
+  - 事実: database/migrations/2026_09_15_113741_create_notifications_table.php:16 $table->string('type');
+  - 事実: database/migrations/2026_09_15_113741_create_notifications_table.php:17 $table->morphs('notifiable');
+  - 事実: database/migrations/2026_09_15_113741_create_notifications_table.php:18 $table->text('data');
+  - 事実: database/migrations/2026_09_15_113741_create_notifications_table.php:19 $table->timestamp('read_at')->nullable();
+  - 事実: 該当なし（外部キー無し） 照合R14 notifications の CREATE TABLE に CONSTRAINT 行 0件
+- F5: 初期データ（シーダー・ファクトリの行と R16 の件数）
+  - 事実: 該当なし grep -rln "failed_jobs\|password_reset_tokens\|personal_access_tokens\|notifications\|DatabaseNotification" database/seeders database/factories → 出力0件
+  - 事実: 照合R15 notifications 0
+- F6: このテーブルを読み書きする箇所（検索コマンドと結果）
+  - 事実: S175（grep -rnE "notifications\(\)|unreadNotifications|DatabaseNotification|markAsRead|->notify\(|'database'" app routes resources/views）の出力は次のとおり
+  - 事実: app/Console/Commands/SendReadingPlanReminders.php:59 $plan->user->notify(new ReadingPlanReminder($plan, $timing));（書き込み）
+  - 事実: app/Notifications/ReadingPlanReminder.php:26 return ['database'];
+  - 事実: app/Http/Controllers/NotificationController.php:17 $notifications = Auth::user()->notifications()->latest()->get();（読み取り・created_at 降順・全件）
+  - 事実: app/Http/Controllers/NotificationController.php:27 $target = DatabaseNotification::findOrFail($notification);
+  - 事実: app/Http/Controllers/NotificationController.php:29-31 if ((int) $target->notifiable_id !== Auth::id()) { abort(403); }
+  - 事実: app/Http/Controllers/NotificationController.php:33 $target->markAsRead();（read_at の書き込み）
+  - 事実: resources/views/layouts/navigation.blade.php:4 $unreadNotificationCount = Auth::user()->unreadNotifications->count();（読み取り）
+  - 事実: 該当なし grep -rn "notifications()->delete\|->notifications->each" app → 出力0件（削除する処理無し）
+
+### T008 password_reset_tokens
+- F1: 対応するモデル（ファイル）
+  - 事実: 該当なし grep -rn "password_reset_tokens" app/Models → 出力0件（モデルファイル無し）
+- F2: リレーション全件
+  - 事実: 該当なし grep -rn "password_reset_tokens" app/Models → 出力0件
+- F3: casts・fillable・guarded・SoftDeletes・アクセサ
+  - 事実: 該当なし grep -rn "password_reset_tokens" app/Models → 出力0件
+- F4: 外部キーと削除時の挙動（マイグレーションの行）
+  - 事実: database/migrations/2014_10_12_100000_create_password_reset_tokens_table.php:15 $table->string('email')->primary();
+  - 事実: database/migrations/2014_10_12_100000_create_password_reset_tokens_table.php:16 $table->string('token');
+  - 事実: database/migrations/2014_10_12_100000_create_password_reset_tokens_table.php:17 $table->timestamp('created_at')->nullable();
+  - 事実: 該当なし（外部キー無し） 照合R14 password_reset_tokens の CREATE TABLE に CONSTRAINT 行 0件
+- F5: 初期データ（シーダー・ファクトリの行と R16 の件数）
+  - 事実: 該当なし grep -rln "failed_jobs\|password_reset_tokens\|personal_access_tokens\|notifications\|DatabaseNotification" database/seeders database/factories → 出力0件
+  - 事実: 照合R15 password_reset_tokens 0
+- F6: このテーブルを読み書きする箇所（検索コマンドと結果）
+  - 事実: S177 config/auth.php:96 'table' => 'password_reset_tokens',
+  - 事実: config/fortify.php:146-148 'features' => [ Features::registration(), ],（resetPasswords の Feature は有効化されていない）
+  - 事実: 該当なし grep -rn "password_reset_tokens" app routes → 出力0件（S177 の出力に app/routes の行なし）
+
+### T009 personal_access_tokens
+- F1: 対応するモデル（ファイル）
+  - 事実: 該当なし grep -rn "personal_access_tokens\|PersonalAccessToken" app/Models → 出力0件（アプリ側のモデルファイル無し）
+  - 事実: app/Models/User.php:11 use Laravel\Sanctum\HasApiTokens;
+  - 事実: app/Models/User.php:15 use HasApiTokens, HasFactory, Notifiable;
+- F2: リレーション全件
+  - 事実: app/Models/User.php:15 use HasApiTokens, HasFactory, Notifiable;（User 側は HasApiTokens トレイトを使用）
+  - 事実: 照合R14 KEY `personal_access_tokens_tokenable_type_tokenable_id_index` (`tokenable_type`,`tokenable_id`)
+  - 事実: 該当なし grep -rn "morphMany\|morphTo" app/Models → 出力0件
+- F3: casts・fillable・guarded・SoftDeletes・アクセサ
+  - 事実: 該当なし（アプリ側モデル無し） grep -rn "personal_access_tokens\|PersonalAccessToken" app/Models → 出力0件
+- F4: 外部キーと削除時の挙動（マイグレーションの行）
+  - 事実: database/migrations/2019_12_14_000001_create_personal_access_tokens_table.php:16 $table->morphs('tokenable');
+  - 事実: database/migrations/2019_12_14_000001_create_personal_access_tokens_table.php:17 $table->string('name');
+  - 事実: database/migrations/2019_12_14_000001_create_personal_access_tokens_table.php:18 $table->string('token', 64)->unique();
+  - 事実: database/migrations/2019_12_14_000001_create_personal_access_tokens_table.php:19 $table->text('abilities')->nullable();
+  - 事実: database/migrations/2019_12_14_000001_create_personal_access_tokens_table.php:20 $table->timestamp('last_used_at')->nullable();
+  - 事実: database/migrations/2019_12_14_000001_create_personal_access_tokens_table.php:21 $table->timestamp('expires_at')->nullable();
+  - 事実: 該当なし（外部キー無し） 照合R14 personal_access_tokens の CREATE TABLE に CONSTRAINT 行 0件
+  - 事実: app/Providers/AppServiceProvider.php:17 Sanctum::ignoreMigrations();
+- F5: 初期データ（シーダー・ファクトリの行と R16 の件数）
+  - 事実: 該当なし grep -rln "failed_jobs\|password_reset_tokens\|personal_access_tokens\|notifications\|DatabaseNotification" database/seeders database/factories → 出力0件
+  - 事実: 照合R15 personal_access_tokens 0
+- F6: このテーブルを読み書きする箇所（検索コマンドと結果）
+  - 事実: S177（grep -rnE "personal_access_tokens|PersonalAccessToken|createToken|ignoreMigrations|auth:sanctum|HasApiTokens|password_reset_tokens|failed_jobs|'migrations' =>" app routes config database tests）の出力のうち該当行は次のとおり
+  - 事実: routes/api.php:23 Route::middleware('auth:sanctum')->group(function () {（POST/PUT/DELETE /api/v1/books でトークンを読み取る）
+  - 事実: app/Providers/AppServiceProvider.php:17 Sanctum::ignoreMigrations();
+  - 事実: config/sanctum.php:49 'expiration' => null,
+  - 事実: 該当なし grep -rn "createToken" app routes config database tests → 出力0件（アプリ側でトークンを発行する処理無し）
+
+### T010 reading_plans
+- F1: 対応するモデル（ファイル）
+  - 事実: app/Models/ReadingPlan.php:10 class ReadingPlan extends Model
+- F2: リレーション全件
+  - 事実: app/Models/ReadingPlan.php:33-36 public function user(): BelongsTo { return $this->belongsTo(User::class); }
+  - 事実: app/Models/ReadingPlan.php:38-42 public function book(): BelongsTo { // 論理削除済みの書籍に紐づく読書計画も一覧・編集で表示するため（CLAUDE.md §9-1） return $this->belongsTo(Book::class)->withTrashed(); }
+  - 事実: 逆側 app/Models/User.php:70-73 public function readingPlans(): HasMany { return $this->hasMany(ReadingPlan::class); }
+  - 事実: 該当なし grep -n "readingPlans\|ReadingPlan" app/Models/Book.php → 出力0件（Book 側に reading_plans へのリレーション無し）
+- F3: casts・fillable・guarded・SoftDeletes・アクセサ
+  - 事実: app/Models/ReadingPlan.php:14-20 protected $fillable = [ 'user_id', 'book_id', 'target_date', 'status', 'completed_at', ];
+  - 事実: app/Models/ReadingPlan.php:27-31 protected $casts = [ 'status' => ReadingPlanStatus::class, 'target_date' => 'date', 'completed_at' => 'datetime', ];
+  - 事実: app/Models/ReadingPlan.php:12 use HasFactory;
+  - 事実: 該当なし grep -n "guarded\|SoftDeletes\|Attribute" app/Models/ReadingPlan.php → 出力0件
+- F4: 外部キーと削除時の挙動（マイグレーションの行）
+  - 事実: database/migrations/2026_09_15_000000_create_reading_plans_table.php:16 $table->foreignId('user_id')->constrained()->restrictOnDelete();
+  - 事実: database/migrations/2026_09_15_000000_create_reading_plans_table.php:17 $table->foreignId('book_id')->constrained()->cascadeOnDelete();
+  - 事実: database/migrations/2026_09_15_000000_create_reading_plans_table.php:18 $table->date('target_date');
+  - 事実: database/migrations/2026_09_15_000000_create_reading_plans_table.php:19 $table->string('status', 20);
+  - 事実: database/migrations/2026_09_15_000000_create_reading_plans_table.php:20 $table->timestamp('completed_at')->nullable();
+  - 事実: 照合R14 CONSTRAINT `reading_plans_book_id_foreign` FOREIGN KEY (`book_id`) REFERENCES `books` (`id`) ON DELETE CASCADE
+  - 事実: 照合R14 CONSTRAINT `reading_plans_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT
+  - 事実: app/Http/Controllers/ReadingPlanController.php:105 $plan->delete();（物理削除）
+- F5: 初期データ（シーダー・ファクトリの行と R16 の件数）
+  - 事実: database/seeders/DatabaseSeeder.php:21 ReadingPlanSeeder::class,
+  - 事実: database/seeders/ReadingPlanSeeder.php:22 $yamada = User::where('email', 'yamada@example.com')->first();
+  - 事実: database/seeders/ReadingPlanSeeder.php:23 $suzuki = User::where('email', 'suzuki@example.com')->first();
+  - 事実: database/seeders/ReadingPlanSeeder.php:26 $books = Book::orderBy('id')->take(6)->get();
+  - 事実: database/seeders/ReadingPlanSeeder.php:31-35 'user_id' => $yamada->id, 'book_id' => $books[0]->id, 'target_date' => Carbon::today()->addDays(3), 'status' => ReadingPlanStatus::InProgress, 'completed_at' => null,
+  - 事実: database/seeders/ReadingPlanSeeder.php:39-43 'user_id' => $yamada->id, 'book_id' => $books[1]->id, 'target_date' => Carbon::today(), 'status' => ReadingPlanStatus::InProgress, 'completed_at' => null,
+  - 事実: database/seeders/ReadingPlanSeeder.php:47-51 'user_id' => $yamada->id, 'book_id' => $books[2]->id, 'target_date' => Carbon::today()->subDays(3), 'status' => ReadingPlanStatus::InProgress, 'completed_at' => null,
+  - 事実: database/seeders/ReadingPlanSeeder.php:55-59 'user_id' => $yamada->id, 'book_id' => $books[3]->id, 'target_date' => Carbon::today()->addDays(7), 'status' => ReadingPlanStatus::InProgress, 'completed_at' => null,
+  - 事実: database/seeders/ReadingPlanSeeder.php:63-67 'user_id' => $yamada->id, 'book_id' => $books[4]->id, 'target_date' => Carbon::today()->subDays(10), 'status' => ReadingPlanStatus::Completed, 'completed_at' => Carbon::today()->subDays(5),
+  - 事実: database/seeders/ReadingPlanSeeder.php:71-75 'user_id' => $suzuki->id, 'book_id' => $books[5]->id, 'target_date' => Carbon::today()->addDays(5), 'status' => ReadingPlanStatus::InProgress, 'completed_at' => null,
+  - 事実: database/seeders/ReadingPlanSeeder.php:80 ReadingPlan::create($plan);
+  - 事実: 該当なし ls database/factories → BookFactory.php GenreFactory.php ReviewFactory.php UserFactory.php（ReadingPlan のファクトリファイル無し）
+  - 事実: 照合R15 reading_plans 6
+  - 事実: 照合R16 1 1 1 2026-09-30 in_progress NULL / 2 1 2 2026-09-27 in_progress NULL / 3 1 3 2026-09-24 in_progress NULL / 4 1 4 2026-10-04 in_progress NULL / 5 1 5 2026-09-17 completed 2026-09-22 00:00:00 / 6 2 6 2026-10-02 in_progress NULL
+- F6: このテーブルを読み書きする箇所（検索コマンドと結果）
+  - 事実: S174（grep -rnE "ReadingPlan::|readingPlans\(\)|reading_plans|->update\(\['status|\$plan->(update|delete)" app routes）の出力と ReadingPlanController の読み書き行は次のとおり
+  - 事実: app/Http/Controllers/ReadingPlanController.php:24-28 $readingPlans = ReadingPlan::where('user_id', Auth::id()) ->with('book') ->when(filled($currentStatus), fn ($query) => $query->where('status', $currentStatus)) ->latest() ->get();
+  - 事実: app/Http/Controllers/ReadingPlanController.php:48-53 ReadingPlan::create([ 'user_id' => Auth::id(), 'book_id' => $request->validated('book_id'), 'target_date' => $request->validated('target_date'), 'status' => ReadingPlanStatus::InProgress, ]);
+  - 事実: app/Http/Controllers/ReadingPlanController.php:76 $plan->update(['target_date' => $request->validated('target_date')]);
+  - 事実: app/Http/Controllers/ReadingPlanController.php:89-92 $plan->update([ 'status' => ReadingPlanStatus::Completed, 'completed_at' => now(), ]);
+  - 事実: app/Http/Controllers/ReadingPlanController.php:105 $plan->delete();
+  - 事実: app/Http/Requests/ReadingPlanStoreRequest.php:55-58 $duplicate = ReadingPlan::where('user_id', Auth::id()) ->where('book_id', $this->input('book_id')) ->where('status', ReadingPlanStatus::InProgress) ->exists();
+  - 事実: app/Console/Commands/ExpireReadingPlans.php:34-36 ReadingPlan::where('status', ReadingPlanStatus::InProgress) ->where('target_date', Carbon::today()->subDays(3)) ->get()
+  - 事実: app/Console/Commands/ExpireReadingPlans.php:39 $plan->update(['status' => ReadingPlanStatus::Expired]);
+  - 事実: app/Console/Commands/SendReadingPlanReminders.php:53-56 ReadingPlan::whereIn('status', $statuses) ->whereDate('target_date', $targetDate) ->with('user') ->get()
+  - 事実: app/Policies/ReadingPlanPolicy.php:16-17 return $user->id === $plan->user_id && $plan->status !== ReadingPlanStatus::Completed;
+  - 事実: app/Policies/ReadingPlanPolicy.php:25 return $user->id === $plan->user_id;
+  - 事実: app/Notifications/ReadingPlanReminder.php:40 'reading_plan_id' => $this->plan->id,
+
+### T011 review_likes
+- F1: 対応するモデル（ファイル）
+  - 事実: 該当なし grep -rn "protected \$table" app/Models → 出力0件（review_likes 専用のモデルファイルは無い）
+  - 事実: app/Models/User.php:67 return $this->belongsToMany(Review::class, 'review_likes');
+  - 事実: app/Models/Review.php:28 return $this->belongsToMany(User::class, 'review_likes');
+- F2: リレーション全件
+  - 事実: app/Models/User.php:65-68 public function likedReviews(): BelongsToMany { return $this->belongsToMany(Review::class, 'review_likes'); }
+  - 事実: app/Models/Review.php:26-29 public function likedByUsers(): BelongsToMany { return $this->belongsToMany(User::class, 'review_likes'); }
+  - 事実: 該当なし grep -n "withPivot\|withTimestamps" app/Models/User.php app/Models/Review.php → 出力0件
+- F3: casts・fillable・guarded・SoftDeletes・アクセサ
+  - 事実: 該当なし（review_likes 専用モデル無し） grep -rn "guarded" app/Models → 出力0件
+  - 事実: 照合R14 `user_id` bigint unsigned NOT NULL, `review_id` bigint unsigned NOT NULL, PRIMARY KEY (`user_id`,`review_id`)（created_at/updated_at 列なし）
+- F4: 外部キーと削除時の挙動（マイグレーションの行）
+  - 事実: database/migrations/2026_09_01_115254_create_review_likes_table.php:15 $table->foreignId('user_id')->constrained()->restrictOnDelete();
+  - 事実: database/migrations/2026_09_01_115254_create_review_likes_table.php:16 $table->foreignId('review_id')->constrained()->cascadeOnDelete();
+  - 事実: database/migrations/2026_09_01_115254_create_review_likes_table.php:17 $table->primary(['user_id', 'review_id']);
+  - 事実: 照合R14 CONSTRAINT `review_likes_review_id_foreign` FOREIGN KEY (`review_id`) REFERENCES `reviews` (`id`) ON DELETE CASCADE
+  - 事実: 照合R14 CONSTRAINT `review_likes_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT
+  - 事実: app/Http/Controllers/ReviewController.php:50 * レビューを削除する（review_likesはcascadeで連動削除）。
+  - 事実: app/Http/Controllers/ReviewController.php:57 $review->delete();
+- F5: 初期データ（シーダー・ファクトリの行と R16 の件数）
+  - 事実: database/seeders/DatabaseSeeder.php:20 ReviewLikeSeeder::class,
+  - 事実: database/seeders/ReviewLikeSeeder.php:22 $likeCount = $reviewIndex % 4;
+  - 事実: database/seeders/ReviewLikeSeeder.php:26-29 $user = $users[($reviewIndex + $j) % $userCount]; if ($user->id !== $review->user_id && ! in_array($user->id, $likers)) { $likers[] = $user->id; }
+  - 事実: database/seeders/ReviewLikeSeeder.php:33 $review->likedByUsers()->syncWithoutDetaching($likers);
+  - 事実: 該当なし grep -rln "review_likes\|likedByUsers" database/factories → 出力0件
+  - 事実: 照合R15 review_likes 54
+  - 事実: 照合R16 user_id=1 の review_id: 4 6 8 11 15 16 20 24 28 31 35 36 / user_id=2: 4 7 11 12 16 22 24 26 32 36 / user_id=3: 2 7 8 12 16 18 20 23 27 31 32 / user_id=4: 3 4 8 12 14 19 23 27 28 34 36 / user_id=5: 3 10 15 19 20 24 28 30 32 35
+- F6: このテーブルを読み書きする箇所（検索コマンドと結果）
+  - 事実: S172（grep -rnE "Review::|reviews\(\)|'reviews|reviews\.|likedByUsers|likedReviews|review_likes" app routes resources/views）の出力のうち review_likes を読み書きする行は次のとおり
+  - 事実: app/Http/Controllers/ReviewController.php:67 Auth::user()->likedReviews()->toggle($review);（書き込み・追加と解除）
+  - 事実: app/Http/Controllers/BookController.php:149 'reviews.likedByUsers',（読み取り）
+  - 事実: resources/views/books/show.blade.php:183 @if(Auth::user()->likedReviews->contains($review->id))
+  - 事実: resources/views/books/show.blade.php:190 いいね済み ({{ $review->likedByUsers->count() }})
+  - 事実: resources/views/books/show.blade.php:200 いいね ({{ $review->likedByUsers->count() }})
+  - 事実: resources/views/books/show.blade.php:209 いいね ({{ $review->likedByUsers->count() }})
+
+### T012 reviews
+- F1: 対応するモデル（ファイル）
+  - 事実: app/Models/Review.php:10 class Review extends Model
+- F2: リレーション全件
+  - 事実: app/Models/Review.php:16-19 public function user(): BelongsTo { return $this->belongsTo(User::class); }
+  - 事実: app/Models/Review.php:21-24 public function book(): BelongsTo { return $this->belongsTo(Book::class)->withTrashed(); }
+  - 事実: app/Models/Review.php:26-29 public function likedByUsers(): BelongsToMany { return $this->belongsToMany(User::class, 'review_likes'); }
+  - 事実: 逆側 app/Models/Book.php:45-48 public function reviews(): HasMany { return $this->hasMany(Review::class); }
+  - 事実: 逆側 app/Models/User.php:55-58 public function reviews(): HasMany { return $this->hasMany(Review::class); }
+  - 事実: 逆側 app/Models/User.php:65-68 public function likedReviews(): BelongsToMany { return $this->belongsToMany(Review::class, 'review_likes'); }
+- F3: casts・fillable・guarded・SoftDeletes・アクセサ
+  - 事実: app/Models/Review.php:14 protected $fillable = ['user_id', 'book_id', 'rating', 'comment'];
+  - 事実: app/Models/Review.php:12 use HasFactory;
+  - 事実: 該当なし grep -n "casts\|guarded\|SoftDeletes\|Attribute" app/Models/Review.php → 出力0件
+- F4: 外部キーと削除時の挙動（マイグレーションの行）
+  - 事実: database/migrations/2026_09_01_115251_create_reviews_table.php:16 $table->foreignId('user_id')->constrained()->restrictOnDelete();
+  - 事実: database/migrations/2026_09_01_115251_create_reviews_table.php:17 $table->foreignId('book_id')->constrained()->cascadeOnDelete();
+  - 事実: database/migrations/2026_09_01_115251_create_reviews_table.php:18 $table->unsignedTinyInteger('rating');
+  - 事実: database/migrations/2026_09_01_115251_create_reviews_table.php:19 $table->text('comment')->nullable();
+  - 事実: 照合R14 CONSTRAINT `reviews_book_id_foreign` FOREIGN KEY (`book_id`) REFERENCES `books` (`id`) ON DELETE CASCADE
+  - 事実: 照合R14 CONSTRAINT `reviews_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT
+  - 事実: reviews を参照する外部キー: 照合R14 CONSTRAINT `review_likes_review_id_foreign` FOREIGN KEY (`review_id`) REFERENCES `reviews` (`id`) ON DELETE CASCADE
+  - 事実: app/Http/Controllers/ReviewController.php:57 $review->delete();（物理削除）
+  - 事実: 該当なし grep -rn "unique" database/migrations/2026_09_01_115251_create_reviews_table.php → 出力0件（user_id と book_id の組に一意制約無し）
+- F5: 初期データ（シーダー・ファクトリの行と R16 の件数）
+  - 事実: database/seeders/DatabaseSeeder.php:18 ReviewSeeder::class,
+  - 事実: database/seeders/ReviewSeeder.php:22 5 => ['素晴らしい本でした！', '人生が変わりました。', '何度も読み返しています。'],
+  - 事実: database/seeders/ReviewSeeder.php:23 4 => ['とても参考になりました。', '読みやすくておすすめです。', '期待通りの内容でした。'],
+  - 事実: database/seeders/ReviewSeeder.php:24 3 => ['普通でした。', '可もなく不可もなく。', '期待したほどではなかった。'],
+  - 事実: database/seeders/ReviewSeeder.php:25 2 => ['少し期待外れでした。', '内容が薄い印象。', 'もう少し深掘りしてほしかった。'],
+  - 事実: database/seeders/ReviewSeeder.php:26 1 => ['残念ながら合いませんでした。', '期待と違いました。'],
+  - 事実: database/seeders/ReviewSeeder.php:30 $reviewCount = rand(2, 4);
+  - 事実: database/seeders/ReviewSeeder.php:32 foreach ($users->random($reviewCount) as $user) {
+  - 事実: database/seeders/ReviewSeeder.php:33 $rating = rand(1, 5);
+  - 事実: database/seeders/ReviewSeeder.php:36-41 Review::create([ 'user_id' => $user->id, 'book_id' => $book->id, 'rating' => $rating, 'comment' => $comments[array_rand($comments)], ]);
+  - 事実: database/factories/ReviewFactory.php:22-25 'user_id' => User::factory(), 'book_id' => Book::factory(), 'rating' => fake()->numberBetween(1, 5), 'comment' => fake()->paragraph(),
+  - 事実: 照合R15 reviews 37
+  - 事実: 照合R16 id 1〜37、book_id ごとの件数: 1→4件(id1-4) / 2→4件(id5-8) / 3→3件(id9-11) / 4→2件(id12-13) / 5→3件(id14-16) / 6→2件(id17-18) / 7→4件(id19-22) / 8→3件(id23-25) / 9→4件(id26-29) / 10→4件(id30-33) / 11→4件(id34-37)
+- F6: このテーブルを読み書きする箇所（検索コマンドと結果）
+  - 事実: S172（grep -rnE "Review::|reviews\(\)|'reviews|reviews\.|likedByUsers|likedReviews|review_likes" app routes resources/views）の出力のうち reviews を読み書きする行は次のとおり
+  - 事実: app/Http/Controllers/ReviewController.php:20 $book->reviews()->create($request->validated() + ['user_id' => Auth::id()]);
+  - 事実: app/Http/Controllers/ReviewController.php:44 $review->update($request->validated());
+  - 事実: app/Http/Controllers/ReviewController.php:57 $review->delete();
+  - 事実: app/Http/Controllers/ReviewController.php:32 $review->load('book');
+  - 事実: app/Http/Controllers/BookController.php:46 'rating' => $query->withAvg('reviews', 'rating')->orderByDesc('reviews_avg_rating'),
+  - 事実: app/Http/Controllers/BookController.php:147-148 'reviews' => fn ($q) => $q->latest(), 'reviews.user',
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:28-29 ->withAvg('reviews', 'rating') ->withCount('reviews')
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:51-53 $book->load(['genres', 'reviews.user']) ->loadAvg('reviews', 'rating') ->loadCount('reviews');
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:70 $book->load('genres')->loadAvg('reviews', 'rating')->loadCount('reviews');
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:87 $book->load('genres')->loadAvg('reviews', 'rating')->loadCount('reviews');
+  - 事実: app/Http/Controllers/RankingController.php:15-18 $rankedBooks = Book::withAvg('reviews', 'rating') ->withCount('reviews') ->whereHas('reviews') ->orderByDesc('reviews_avg_rating')
+  - 事実: app/Http/Controllers/ReportController.php:23-25 $reviews = Review::where('user_id', Auth::id()) ->with('book.genres') ->get();
+  - 事実: app/Http/Resources/BookResource.php:28 'reviews' => ReviewResource::collection($this->whenLoaded('reviews')),
+  - 事実: app/Providers/AuthServiceProvider.php:17 \App\Models\Review::class => \App\Policies\ReviewPolicy::class,
+  - 事実: app/Policies/ReviewPolicy.php:15 return $user->id === $review->user_id;
+  - 事実: app/Policies/ReviewPolicy.php:23 return $user->id === $review->user_id;
+
+### T013 users
+- F1: 対応するモデル（ファイル）
+  - 事実: app/Models/User.php:13 class User extends Authenticatable
+- F2: リレーション全件
+  - 事実: app/Models/User.php:50-53 public function books(): HasMany { return $this->hasMany(Book::class); }
+  - 事実: app/Models/User.php:55-58 public function reviews(): HasMany { return $this->hasMany(Review::class); }
+  - 事実: app/Models/User.php:60-63 public function favoriteBooks(): BelongsToMany { return $this->belongsToMany(Book::class, 'favorites'); }
+  - 事実: app/Models/User.php:65-68 public function likedReviews(): BelongsToMany { return $this->belongsToMany(Review::class, 'review_likes'); }
+  - 事実: app/Models/User.php:70-73 public function readingPlans(): HasMany { return $this->hasMany(ReadingPlan::class); }
+  - 事実: app/Models/User.php:15 use HasApiTokens, HasFactory, Notifiable;（トレイト経由で tokens・notifications）
+  - 事実: 逆側 app/Models/Book.php:35-38 public function user(): BelongsTo { return $this->belongsTo(User::class); }
+  - 事実: 逆側 app/Models/Book.php:50-53 public function favoritedByUsers(): BelongsToMany { return $this->belongsToMany(User::class, 'favorites'); }
+  - 事実: 逆側 app/Models/Review.php:16-19 public function user(): BelongsTo { return $this->belongsTo(User::class); }
+  - 事実: 逆側 app/Models/Review.php:26-29 public function likedByUsers(): BelongsToMany { return $this->belongsToMany(User::class, 'review_likes'); }
+  - 事実: 逆側 app/Models/ReadingPlan.php:33-36 public function user(): BelongsTo { return $this->belongsTo(User::class); }
+- F3: casts・fillable・guarded・SoftDeletes・アクセサ
+  - 事実: app/Models/User.php:22-26 protected $fillable = [ 'name', 'email', 'password', ];
+  - 事実: app/Models/User.php:33-38 protected $hidden = [ 'password', 'remember_token', 'two_factor_recovery_codes', 'two_factor_secret', ];
+  - 事実: app/Models/User.php:45-48 protected $casts = [ 'email_verified_at' => 'datetime', 'password' => 'hashed', ];
+  - 事実: 該当なし grep -n "guarded\|SoftDeletes\|Attribute" app/Models/User.php → 出力0件
+- F4: 外部キーと削除時の挙動（マイグレーションの行）
+  - 事実: database/migrations/2014_10_12_000000_create_users_table.php:16 $table->string('name');
+  - 事実: database/migrations/2014_10_12_000000_create_users_table.php:17 $table->string('email')->unique();
+  - 事実: database/migrations/2014_10_12_000000_create_users_table.php:18 $table->timestamp('email_verified_at')->nullable();
+  - 事実: database/migrations/2014_10_12_000000_create_users_table.php:19 $table->string('password');
+  - 事実: database/migrations/2014_10_12_000000_create_users_table.php:20 $table->rememberToken();
+  - 事実: database/migrations/2014_10_12_200000_add_two_factor_columns_to_users_table.php:15-17 $table->text('two_factor_secret') ->after('password') ->nullable();
+  - 事実: database/migrations/2014_10_12_200000_add_two_factor_columns_to_users_table.php:19-21 $table->text('two_factor_recovery_codes') ->after('two_factor_secret') ->nullable();
+  - 事実: database/migrations/2014_10_12_200000_add_two_factor_columns_to_users_table.php:23-25 $table->timestamp('two_factor_confirmed_at') ->after('two_factor_recovery_codes') ->nullable();
+  - 事実: 該当なし（users 自身の外部キー無し） 照合R14 users の CREATE TABLE に CONSTRAINT 行 0件
+  - 事実: users を参照する外部キー: 照合R14 `books_user_id_foreign` / `favorites_user_id_foreign` / `reading_plans_user_id_foreign` / `review_likes_user_id_foreign` / `reviews_user_id_foreign` いずれも REFERENCES `users` (`id`) ON DELETE RESTRICT
+  - 事実: 該当なし grep -rn -e "->delete()" app | grep -i user → 出力0件（users を削除する処理無し）
+- F5: 初期データ（シーダー・ファクトリの行と R16 の件数）
+  - 事実: database/seeders/DatabaseSeeder.php:15 UserSeeder::class,
+  - 事実: database/seeders/UserSeeder.php:17 ['name' => '山田太郎', 'email' => 'yamada@example.com'],
+  - 事実: database/seeders/UserSeeder.php:18 ['name' => '鈴木花子', 'email' => 'suzuki@example.com'],
+  - 事実: database/seeders/UserSeeder.php:19 ['name' => '田中一郎', 'email' => 'tanaka@example.com'],
+  - 事実: database/seeders/UserSeeder.php:20 ['name' => '佐藤美咲', 'email' => 'sato@example.com'],
+  - 事実: database/seeders/UserSeeder.php:21 ['name' => '高橋健太', 'email' => 'takahashi@example.com'],
+  - 事実: database/seeders/UserSeeder.php:25-28 User::firstOrCreate( ['email' => $user['email']], ['name' => $user['name'], 'password' => Hash::make('password')] );
+  - 事実: database/factories/UserFactory.php:27-31 'name' => fake()->name(), 'email' => fake()->unique()->safeEmail(), 'email_verified_at' => now(), 'password' => static::$password ??= Hash::make('password'), 'remember_token' => Str::random(10),
+  - 事実: database/factories/UserFactory.php:38-43 public function unverified(): static { return $this->state(fn (array $attributes) => [ 'email_verified_at' => null, ]); }
+  - 事実: 照合R15 users 5
+  - 事実: 照合R100 1 山田太郎 yamada@example.com NULL / 2 鈴木花子 suzuki@example.com NULL / 3 田中一郎 tanaka@example.com NULL / 4 佐藤美咲 sato@example.com NULL / 5 高橋健太 takahashi@example.com NULL
+- F6: このテーブルを読み書きする箇所（検索コマンドと結果）
+  - 事実: S176（grep -rnE "User::|users,|'users'|Auth::user\(\)|->user\b|->user\(\)" app routes config/auth.php config/fortify.php）の出力のうち users を読み書きする行は次のとおり
+  - 事実: app/Actions/Fortify/CreateNewUser.php:24 'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+  - 事実: app/Actions/Fortify/CreateNewUser.php:38-42 return User::create([ 'name' => $input['name'], 'email' => $input['email'], 'password' => Hash::make($input['password']), ]);
+  - 事実: app/Providers/FortifyServiceProvider.php:28 Fortify::createUsersUsing(CreateNewUser::class);
+  - 事実: config/auth.php:63-65 'users' => [ ... 'model' => App\Models\User::class,（ログイン時の読み取りは Eloquent ユーザープロバイダ）
+  - 事実: app/Http/Resources/ReviewResource.php:18 'user_name' => $this->user->name,
+  - 事実: app/Http/Controllers/BookController.php:148 'reviews.user',
+  - 事実: app/Http/Controllers/Api/V1/BookController.php:51 $book->load(['genres', 'reviews.user'])
+  - 事実: app/Console/Commands/SendReadingPlanReminders.php:55 ->with('user')
+  - 事実: app/Console/Commands/SendReadingPlanReminders.php:59 $plan->user->notify(new ReadingPlanReminder($plan, $timing));
+  - 事実: app/Providers/RouteServiceProvider.php:28 return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
+  - 事実: 該当なし grep -rn "User::\|->user()->update\|password" app/Http/Controllers → 出力0件（コントローラーで users を更新する処理無し）

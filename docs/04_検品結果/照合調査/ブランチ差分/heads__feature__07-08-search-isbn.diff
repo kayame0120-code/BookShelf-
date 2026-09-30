@@ -1,0 +1,894 @@
+diff --git a/QUESTIONS.md b/QUESTIONS.md
+index 1335727..7867e07 100644
+--- a/QUESTIONS.md
++++ b/QUESTIONS.md
+@@ -9,6 +9,7 @@ ## 記録書式（1件1行）
+ |---|---|---|---|
+ | （例）8/26 | 02_書籍CRUD | 書籍削除時の確認ダイアログ文言 | (a) 「本当に削除しますか？」 (b) Bladeの文言をそのまま踏襲 |
+ | 2026-09-02 | 05_公開APIシーディング | `App\Models\Book` に `published_date` の `date` cast が無い（走行①の実装は `$casts` 未定義）。発注書02§9の参考モデルおよび発注書05§5は `$this->published_date->format('Y-m-d')` を前提としており cast 有りを想定しているが、実モデルに cast を追加すると `books/show.blade.php` の `{{ $book->published_date }}` の出力が「2012-06-23」→「2012-06-23 00:00:00」に変わり frozen Blade の契約（CLAUDE.md§0でBladeが最優先）に反する。 | (a) §0に従いBlade契約を優先し、モデルには cast を追加せず API Resource 側で `Carbon::parse($this->published_date)->format('Y-m-d')` に変更して両立させる（今回採用。既存Blade表示を壊さない最小修正）。 (b) 走行①のスコープ漏れとしてモデルに `'published_date' => 'date:Y-m-d'` cast を追加し、発注書の literal コードを維持する（ただしBlade表示への影響検証が必要）。 |
++| 2026-09-11 | 07_検索フィルタソート（検品表B-2） | 検品表B-2は `/books?keyword=Code&genre=3` で「リーダブルコード」「Clean Code」の2冊を期待するが、走行⑤確定のシードデータでは「リーダブルコード」の title=「リーダブルコード」（カタカナ）・author=「Dustin Boswell」であり "Code" の文字列を含まない。発注書07§2はキーワード検索を title/author の LIKE 検索のみと明示しており、実装はこれに完全準拠。この仕様＋実データでは keyword=Code は「Clean Code」のみに一致し、genre=3 とのAND結果は1冊（Clean Code）になる。実装欠陥ではなく検品表の想定データとシードの不整合。 | (a) 発注書07§2（title/author LIKE）が正本であり実装は正しい。検品表B-2の期待値を「keyword=Clean&genre=3 → Clean Code の1冊」等、実シードで成立する例に修正する（今回採用: 実装は変更しない）。 (b) B-2のAND検証を別の組み合わせ（例: keyword=夏目 だけでAND無関係、genre併用は別ID）に差し替える。※検索対象カラムの拡張（説明文等）は§2の明示指定に反するため候補にしない。 |
+ | 2026-09-03 | 差し戻し指示_走行②③④⑤（②B-2・③C-4） | 指示のcurl（未認証でのPOST `/books`・PUT `/books/1`・DELETE `/books/1`・PATCH `/books/1/restore`・POST `/reviews/1/like`）は**302 Found + Location: .../login を期待**しているが、実機は全て **`HTTP/1.1 419 unknown status`（CSRFトークン不一致）** を返す。web ミドルウェアグループでは `VerifyCsrfToken` が `auth` より先に実行されるため、CSRFトークンなしの書き込み系リクエストは auth 到達前に419で拒否される（Laravel標準挙動。テストではCSRFが無効化されるため302→loginになる）。完了条件「302以外は仮決めせずそのまま報告・この場で直さない」に従い記録し、実装は変更していない。 | (a) 419はCSRF保護による正常な防御挙動であり、未認証書き込みは実質的に拒否されている（auth到達前に弾かれる）とみなし、curl証拠は419のまま受理する。 (b) 未認証リダイレクト（302→login）の確認は実HTTP curlではなくFeatureテスト（CSRF無効環境）で行う確認方法に検品表側を修正する。※どちらを採るか検品側の裁定を仰ぐ。 |
+ - **発生日**: 該当箇所に当たった日付
+ - **対象発注書**: `02_発注書/NN_機能名.md` のファイル名
+@@ -23,6 +24,6 @@ ## 運用ルール
+ 
+ ---
+ 
+-現在の未解消件数: **2件**（②B-2/③C-4のCSRF419【検証方法の記録として保持・修正パッチで確認方法変更済み】、05のpublished_date cast）
++現在の未解消件数: **3件**（②B-2/③C-4のCSRF419【検証方法の記録として保持・修正パッチで確認方法変更済み】、05のpublished_date cast【走行⑧のadvanced Blade移入で show.blade が `published_date?->format('Y-m-d')` に変わったため発注書08§5に従いモデルへ cast を追加。当該行の裁定前提が変化した点を片倉に要確認】、07検品表B-2のシード不整合）
+ 
+ ※ ③E-2/⑤F-4のid=11未削除前提の行は、差し戻し指示（走行②③⑤ 残存4件）の裁定「カウント前に対象書籍を論理削除してから確認する」により検証手順が確定したため削除した（2026-09-03）。
+diff --git a/app/Http/Controllers/BookController.php b/app/Http/Controllers/BookController.php
+index f8ceb12..5a8a646 100644
+--- a/app/Http/Controllers/BookController.php
++++ b/app/Http/Controllers/BookController.php
+@@ -6,21 +6,89 @@
+ use App\Http\Requests\UpdateBookRequest;
+ use App\Models\Book;
+ use App\Models\Genre;
++use Illuminate\Contracts\View\View;
++use Illuminate\Http\Client\ConnectionException;
++use Illuminate\Http\JsonResponse;
++use Illuminate\Http\Request;
+ use Illuminate\Support\Facades\Auth;
+ use Illuminate\Support\Facades\DB;
++use Illuminate\Support\Facades\Http;
+ 
+ class BookController extends Controller
+ {
+     /**
+-     * 書籍一覧を表示する。
++     * 書籍一覧を表示する（キーワード検索・ジャンル絞り込み・並び替え対応）。
+      */
+-    public function index()
++    public function index(Request $request): View
+     {
+-        $books = Book::with('genres')
+-            ->latest()
+-            ->paginate(10);
++        $query = Book::query()->with('genres');
++
++        $keyword = trim((string) $request->query('keyword', ''));
++        if ($keyword !== '') {
++            $query->where(function ($q) use ($keyword) {
++                $q->where('title', 'like', "%{$keyword}%")
++                    ->orWhere('author', 'like', "%{$keyword}%");
++            });
++        }
++
++        $genre = (int) $request->query('genre', 0);
++        if ($genre > 0) {
++            $query->whereHas('genres', function ($q) use ($genre) {
++                $q->where('genres.id', $genre);
++            });
++        }
++
++        $sort = (string) $request->query('sort', 'newest');
++        match ($sort) {
++            'oldest' => $query->orderBy('created_at'),
++            'title' => $query->orderBy('title'),
++            'rating' => $query->withAvg('reviews', 'rating')->orderByDesc('reviews_avg_rating'),
++            default => $query->orderByDesc('created_at'),
++        };
++
++        $books = $query->paginate(10)->withQueryString();
++
++        return view('books.index', [
++            'books' => $books,
++            'genres' => Genre::all(),
++        ]);
++    }
+ 
+-        return view('books.index', compact('books'));
++    /**
++     * ISBNからGoogle Books APIを検索し、フォーム自動入力用のJSONを返す。
++     */
++    public function searchByIsbn(string $isbn): JsonResponse
++    {
++        if (! preg_match('/^[0-9]{13}$/', $isbn)) {
++            return response()->json(['error' => 'ISBNは13桁の数字で入力してください'], 422);
++        }
++
++        try {
++            $response = Http::timeout(5)->get('https://www.googleapis.com/books/v1/volumes', [
++                'q' => "isbn:{$isbn}",
++            ]);
++        } catch (ConnectionException $e) {
++            return response()->json(['error' => '書籍情報の取得に失敗しました'], 502);
++        }
++
++        if ($response->failed()) {
++            return response()->json(['error' => '書籍情報の取得に失敗しました'], 502);
++        }
++
++        $totalItems = $response->json('totalItems', 0);
++        if ($totalItems === 0) {
++            return response()->json(['error' => '該当する書籍が見つかりませんでした'], 404);
++        }
++
++        $volumeInfo = $response->json('items.0.volumeInfo', []);
++
++        return response()->json([
++            'title' => $volumeInfo['title'] ?? '',
++            'author' => implode('、', $volumeInfo['authors'] ?? []),
++            'description' => $volumeInfo['description'] ?? '',
++            'image_url' => $volumeInfo['imageLinks']['thumbnail'] ?? '',
++            'published_date' => $volumeInfo['publishedDate'] ?? '',
++        ]);
+     }
+ 
+     /**
+diff --git a/app/Http/Requests/StoreBookRequest.php b/app/Http/Requests/StoreBookRequest.php
+index e5b9201..1efcf3e 100644
+--- a/app/Http/Requests/StoreBookRequest.php
++++ b/app/Http/Requests/StoreBookRequest.php
+@@ -24,8 +24,8 @@ public function rules(): array
+         return [
+             'title' => ['required', 'string', 'max:255'],
+             'author' => ['required', 'string', 'max:255'],
+-            'isbn' => ['required', 'string', 'regex:/^[0-9]{13}$/', 'unique:books,isbn'],
+-            'published_date' => ['required', 'date'],
++            'isbn' => ['nullable', 'string', 'regex:/^[0-9]{13}$/', 'unique:books,isbn'],
++            'published_date' => ['nullable', 'date'],
+             'description' => ['nullable', 'string', 'max:1000'],
+             'image_url' => ['nullable', 'url', 'max:255'],
+             'genres' => ['required', 'array', 'min:1'],
+@@ -45,11 +45,9 @@ public function messages(): array
+             'title.max' => 'タイトルは255文字以内で入力してください',
+             'author.required' => '著者名を入力してください',
+             'author.max' => '著者名は255文字以内で入力してください',
+-            'isbn.required' => 'ISBNを入力してください',
+-            'isbn.regex' => 'ISBNは13桁の数字で入力してください',
++            'isbn.regex' => 'ISBNは13桁の数字で入力してください（入力がある場合のみ）',
+             'isbn.unique' => 'このISBNは既に登録されています',
+-            'published_date.required' => '出版日を入力してください',
+-            'published_date.date' => '出版日は正しい日付形式で入力してください',
++            'published_date.date' => '出版日は正しい日付形式で入力してください（入力がある場合のみ）',
+             'description.max' => '説明は1000文字以内で入力してください',
+             'image_url.url' => '画像URLの形式が正しくありません',
+             'image_url.max' => '画像URLは255文字以内で入力してください',
+diff --git a/app/Http/Requests/UpdateBookRequest.php b/app/Http/Requests/UpdateBookRequest.php
+index 899c982..a6339fd 100644
+--- a/app/Http/Requests/UpdateBookRequest.php
++++ b/app/Http/Requests/UpdateBookRequest.php
+@@ -26,12 +26,12 @@ public function rules(): array
+             'title' => ['required', 'string', 'max:255'],
+             'author' => ['required', 'string', 'max:255'],
+             'isbn' => [
+-                'required',
++                'nullable',
+                 'string',
+                 'regex:/^[0-9]{13}$/',
+                 Rule::unique('books', 'isbn')->ignore($this->route('book')),
+             ],
+-            'published_date' => ['required', 'date'],
++            'published_date' => ['nullable', 'date'],
+             'description' => ['nullable', 'string', 'max:1000'],
+             'image_url' => ['nullable', 'url', 'max:255'],
+             'genres' => ['required', 'array', 'min:1'],
+@@ -51,11 +51,9 @@ public function messages(): array
+             'title.max' => 'タイトルは255文字以内で入力してください',
+             'author.required' => '著者名を入力してください',
+             'author.max' => '著者名は255文字以内で入力してください',
+-            'isbn.required' => 'ISBNを入力してください',
+-            'isbn.regex' => 'ISBNは13桁の数字で入力してください',
++            'isbn.regex' => 'ISBNは13桁の数字で入力してください（入力がある場合のみ）',
+             'isbn.unique' => 'このISBNは既に登録されています',
+-            'published_date.required' => '出版日を入力してください',
+-            'published_date.date' => '出版日は正しい日付形式で入力してください',
++            'published_date.date' => '出版日は正しい日付形式で入力してください（入力がある場合のみ）',
+             'description.max' => '説明は1000文字以内で入力してください',
+             'image_url.url' => '画像URLの形式が正しくありません',
+             'image_url.max' => '画像URLは255文字以内で入力してください',
+diff --git a/app/Models/Book.php b/app/Models/Book.php
+index 9064e66..4b20372 100644
+--- a/app/Models/Book.php
++++ b/app/Models/Book.php
+@@ -20,6 +20,15 @@ class Book extends Model
+         'user_id',
+     ];
+ 
++    /**
++     * The attributes that should be cast.
++     *
++     * @var array<string, string>
++     */
++    protected $casts = [
++        'published_date' => 'date',
++    ];
++
+     public function user()
+     {
+         return $this->belongsTo(User::class);
+diff --git a/database/migrations/2026_09_11_111642_make_isbn_and_published_date_nullable_on_books_table.php b/database/migrations/2026_09_11_111642_make_isbn_and_published_date_nullable_on_books_table.php
+new file mode 100644
+index 0000000..ef6b3b9
+--- /dev/null
++++ b/database/migrations/2026_09_11_111642_make_isbn_and_published_date_nullable_on_books_table.php
+@@ -0,0 +1,30 @@
++<?php
++
++use Illuminate\Database\Migrations\Migration;
++use Illuminate\Database\Schema\Blueprint;
++use Illuminate\Support\Facades\Schema;
++
++return new class extends Migration
++{
++    /**
++     * Run the migrations.
++     */
++    public function up(): void
++    {
++        Schema::table('books', function (Blueprint $table) {
++            $table->string('isbn', 13)->nullable()->change();
++            $table->date('published_date')->nullable()->change();
++        });
++    }
++
++    /**
++     * Reverse the migrations.
++     */
++    public function down(): void
++    {
++        Schema::table('books', function (Blueprint $table) {
++            $table->string('isbn', 13)->nullable(false)->change();
++            $table->date('published_date')->nullable(false)->change();
++        });
++    }
++};
+diff --git "a/docs/04_\346\244\234\345\223\201\347\265\220\346\236\234/\350\250\274\346\213\240_\342\221\246_\342\221\247.md" "b/docs/04_\346\244\234\345\223\201\347\265\220\346\236\234/\350\250\274\346\213\240_\342\221\246_\342\221\247.md"
+new file mode 100644
+index 0000000..5764563
+--- /dev/null
++++ "b/docs/04_\346\244\234\345\223\201\347\265\220\346\236\234/\350\250\274\346\213\240_\342\221\246_\342\221\247.md"
+@@ -0,0 +1,638 @@
++# 証拠_⑦_⑧ — 検索・フィルタ・ソート / ISBN検索
++
++本ファイルはCC（実装セッション）が検品表07・08の各行に対応する生の実行結果のみを記入したもの。判定（YES/NO）はチャット側が行う。
++
++- 対象ブランチ: feature/07-08-search-isbn
++- 対象発注書: docs/02_発注書/発注書_07_検索フィルタソート.md / 発注書_08_ISBN検索.md
++- 対象検品表: docs/03_検品表/07_検索フィルタソート.md / 08_ISBN検索.md
++- アプリURL: http://localhost:8022
++- 補足: 発注書08 A系/B-2の本物Google Books API通信は、収集時点で実APIが HTTP 429（レート制限）を返したため、§3/§4設計（採点はHttp::fake配下）に従い Http::fake で該当分岐を再現した出力を併記する。実API 429 の生出力も末尾に添付。
++
++---
++
++## 証拠収集前に一度だけ実行するコマンド
++
++### `git branch --show-current`
++```
++feature/07-08-search-isbn
++```
++
++### `git log --oneline -5`
++```
++c264da2 feat: ISBN検索とisbn/published_dateのnullable化を実装 (発注書08)
++20ffde4 feat: 書籍一覧に検索・ジャンル絞り込み・並び替えを実装 (発注書07)
++d81d13a Merge branch 'fix/design-ui-corrections'
++56b0502 chore: Excelロックファイルを除外
++c6909e6 　ドキュメントを整理
++```
++
++### `sail bin pint --test`
++```
++
++  ............................................................................
++  ................................
++
++  ──────────────────────────────────────────────────────────────────── Laravel  
++    PASS   ......................................................... 108 files  
++
++```
++
++### `sail artisan migrate:fresh --seed`
++```
++
++  Dropping all tables ............................................. 118ms DONE
++
++   INFO  Preparing database.  
++
++  Creating migration table ......................................... 22ms DONE
++
++   INFO  Running migrations.  
++
++  2014_10_12_000000_create_users_table ............................. 39ms DONE
++  2014_10_12_100000_create_password_reset_tokens_table ............. 23ms DONE
++  2014_10_12_200000_add_two_factor_columns_to_users_table .......... 41ms DONE
++  2019_08_19_000000_create_failed_jobs_table ....................... 29ms DONE
++  2026_09_01_115250_create_genres_table ............................ 27ms DONE
++  2026_09_01_115251_create_books_table ............................ 116ms DONE
++  2026_09_01_115251_create_reviews_table .......................... 100ms DONE
++  2026_09_01_115252_create_book_genre_table ........................ 90ms DONE
++  2026_09_01_115253_create_favorites_table ......................... 88ms DONE
++  2026_09_01_115254_create_review_likes_table ...................... 89ms DONE
++  2026_09_11_111642_make_isbn_and_published_date_nullable_on_books_table  38ms DONE
++
++
++   INFO  Seeding database.  
++
++  Database\Seeders\UserSeeder ........................................ RUNNING  
++  Database\Seeders\UserSeeder .................................... 979 ms DONE  
++
++  Database\Seeders\GenreSeeder ....................................... RUNNING  
++  Database\Seeders\GenreSeeder .................................... 33 ms DONE  
++
++  Database\Seeders\BookSeeder ........................................ RUNNING  
++  Database\Seeders\BookSeeder .................................... 123 ms DONE  
++
++  Database\Seeders\ReviewSeeder ...................................... RUNNING  
++  Database\Seeders\ReviewSeeder .................................. 160 ms DONE  
++
++  Database\Seeders\FavoriteSeeder .................................... RUNNING  
++  Database\Seeders\FavoriteSeeder ................................. 84 ms DONE  
++
++  Database\Seeders\ReviewLikeSeeder .................................. RUNNING  
++  Database\Seeders\ReviewLikeSeeder .............................. 184 ms DONE  
++
++```
++
++### `sail artisan route:list --path=books`
++```
++
++  GET|HEAD        api/v1/books ..... books.index › Api\V1\BookController@index
++  POST            api/v1/books ..... books.store › Api\V1\BookController@store
++  GET|HEAD        api/v1/books/{book} books.show › Api\V1\BookController@show
++  PUT|PATCH       api/v1/books/{book} books.update › Api\V1\BookController@up…
++  DELETE          api/v1/books/{book} books.destroy › Api\V1\BookController@d…
++  GET|HEAD        books ................... books.index › BookController@index
++  POST            books ................... books.store › BookController@store
++  GET|HEAD        books/create .......... books.create › BookController@create
++  GET|HEAD        books/isbn/{isbn} books.searchByIsbn › BookController@searc…
++  GET|HEAD        books/{book} .............. books.show › BookController@show
++  PUT             books/{book} .......... books.update › BookController@update
++  DELETE          books/{book} ........ books.destroy › BookController@destroy
++  GET|HEAD        books/{book}/edit ......... books.edit › BookController@edit
++  POST            books/{book}/favorites favorites.toggle › FavoriteControlle…
++  PATCH           books/{book}/restore books.restore › BookController@restore
++  POST            books/{book}/reviews reviews.store › ReviewController@store
++
++                                                           Showing [16] routes
++
++```
++
++---
++
++# 検品表07 — 検索・フィルタ・ソート
++
++## A. キーワード検索
++
++### A-1 `keyword=リーダブル` で該当書籍のみ（実機 /books?keyword=リーダブル）
++```
++HTTP status: 200
++画面の件数表示: 検索結果: 1件
++画面の書籍カード見出し(h3):
++リーダブルコード
++```
++
++### A-2 `keyword=夏目` で著者名一部一致（吾輩は猫である・坊っちゃんの2件）
++```
++HTTP status: 200
++画面の件数表示: 検索結果: 2件
++画面の書籍カード見出し(h3):
++吾輩は猫である
++坊っちゃん
++```
++
++### A-3 `keyword=存在しない文字列` で200＋「書籍が見つかりませんでした。」
++```
++HTTP status: 200
++0件メッセージ: 書籍が見つかりませんでした。
++画面の件数表示: 検索結果: 0件
++```
++
++## B. ジャンルフィルタ・条件の併用
++
++### B-1 `genre=3` で当該ジャンルの書籍のみ
++```
++HTTP status: 200
++画面の書籍カード見出し(h3):
++リーダブルコード
++Clean Code
++```
++
++### B-2 `keyword=Code&genre=3` のAND絞り込み結果
++```
++HTTP status: 200
++画面の件数表示: 検索結果: 1件
++画面の書籍カード見出し(h3):
++Clean Code
++(参考) genre=3 所属書籍の title | author:
++リーダブルコード | Dustin Boswell
++Clean Code | Robert C. Martin
++```
++
++### B-3 `genre=999`（存在しないID）で200・0件
++```
++HTTP status: 200
++0件メッセージ: 書籍が見つかりませんでした。
++```
++
++### B-4 ジャンルセレクトに登録済み全ジャンル（10件）が選択肢表示
++```
++select内 option[value=数値] の件数: 10
++option の生HTML:
++```
++
++## C. ソート
++
++注記: seedは全書籍の created_at が同一時刻・全書籍にレビュー有り。C-1/C-2 の新旧差・C-4 のレビュー0件末尾は既定seedでは可視化できないため、(1) 生成SQLの並び方向、(2) DB::transaction 内で一時的に条件を作り検証後 rollback（seed無改変）した生出力を併記する。
++
++### C-1/C-2/C-3 生成SQLの並び方向（toSql）
++```
++newest(sort未指定/newest): select * from `books` where `books`.`deleted_at` is null order by `created_at` desc
++oldest: select * from `books` where `books`.`deleted_at` is null order by `created_at` asc
++title : select * from `books` where `books`.`deleted_at` is null order by `title` asc
++rating: select `books`.*, (select avg(`reviews`.`rating`) from `reviews` where `books`.`id` = `reviews`.`book_id`) as `reviews_avg_rating` from `books` where `books`.`deleted_at` is null order by `reviews_avg_rating` desc
++```
++
++### C-1（newest, sort未指定）/ C-2（oldest）: created_at を一時差別化して並び確認（rollback）
++```
++newest 表示順(先頭5): ["11:コンテナ物語(2030-12-31)","2:人を動かす(2026-09-11)","3:リーダブルコード(2026-09-11)","4:7つの習慣(2026-09-11)","5:坊っちゃん(2026-09-11)"]
++oldest 表示順(先頭5): ["1:吾輩は猫である(2020-01-01)","2:人を動かす(2026-09-11)","3:リーダブルコード(2026-09-11)","4:7つの習慣(2026-09-11)","5:坊っちゃん(2026-09-11)"]
++rollback後 books件数: 11
++```
++
++### C-3 `sort=title`（タイトル昇順）実機
++```
++HTTP status: 200
++画面の書籍カード見出し(h3, 表示順):
++7つの習慣
++Clean Code
++FACTFULNESS
++コンテナ物語
++サピエンス全史
++リーダブルコード
++人を動かす
++吾輩は猫である
++坊っちゃん
++嫌われる勇気
++```
++
++### C-4 `sort=rating`（評価高い順・レビュー0件末尾・COALESCE不使用）
++```
++吾輩は猫である avg=4.0000
++人を動かす avg=4.0000
++リーダブルコード avg=4.0000
++7つの習慣 avg=4.0000
++坊っちゃん avg=4.0000
++サピエンス全史 avg=4.0000
++嫌われる勇気 avg=4.0000
++火花 avg=4.0000
++FACTFULNESS avg=4.0000
++コンテナ物語 avg=4.0000
++Clean Code avg=3.5000
++ZZ_NoReview avg=NULL
++---rollback後 books件数: 11
++rating分岐のコントローラ該当行 / COALESCE・IFNULL検索:
++45:            'rating' => $query->withAvg('reviews', 'rating')->orderByDesc('reviews_avg_rating'),
++(coalesce/ifnull 出現なし)
++```
++
++### C-5 `sort=abc`（未定義値）で200（422にならない）
++```
++HTTP status: 200
++```
++
++### C-6 選択中の sort が selected（sort=oldest）
++```
++<option value="oldest" selected>古い順
++```
++
++## D. ページネーション・件数表示・組み合わせ
++
++### D-1 2ページ目遷移で keyword/genre/sort 維持・リンクにクエリ付与
++```
++sort=oldest の page2 URL: http://localhost/books?sort=oldest&page=2
++genre=0&sort=title の nextPageUrl: http://localhost/books?genre=0&sort=title&page=2
++実機 /books?sort=oldest のページネーション内 page=2 href:
++href="http://localhost:8022/books?sort=oldest&amp;page=2"
++href="http://localhost:8022/books?sort=oldest&amp;page=2"
++href="http://localhost:8022/books?sort=oldest&amp;page=2"
++```
++
++### D-2 `page=999` で404にならず空一覧
++```
++HTTP status: 200
++currentPage=999 count=0 total=11
++```
++
++### D-3 keyword/genre指定時のみ「検索結果: N件」表示
++```
++無指定 /books の「検索結果:」出現数(grep -c): 0
++keyword指定時: 検索結果: 2件
++genre指定時: 検索結果: 2件
++```
++
++### D-4 絞り込み結果に sort が適用（genre=7&sort=title）
++```
++HTTP status: 200
++画面の書籍カード見出し(h3, 表示順):
++FACTFULNESS
++サピエンス全史
++```
++
++### D-5 論理削除済み書籍が検索・ジャンル結果に現れない
++```
++削除対象(id3): リーダブルコード
++keyword=リーダブル 結果: []
++genre=3 結果: ["Clean Code"]
++rollback後 id3: リーダブルコード
++```
++
++### D-6 未ログインでも検索・絞り込み・ソートが実行できる（Cookie無しの素curl）
++```
++GET /books -> HTTP 200
++GET /books?genre=3&sort=title -> HTTP 200
++GET /books?sort=rating -> HTTP 200
++GET /books?keyword=夏目 -> HTTP 200
++```
++
++## E. コード品質・スコープ厳守
++
++### E-1 `sail bin pint --test`（冒頭「証拠収集前コマンド」に全文添付。末尾再掲）
++```
++  ──────────────────────────────────────────────────────────────────── Laravel  
++    PASS   ......................................................... 108 files  
++
++```
++
++### E-2 keyword/genre/sort/page にバリデーションクラス（rules()/validate()）が無い
++```
++    public function index(Request $request): View
++    {
++        $query = Book::query()->with('genres');
++
++        $keyword = trim((string) $request->query('keyword', ''));
++        if ($keyword !== '') {
++            $query->where(function ($q) use ($keyword) {
++                $q->where('title', 'like', "%{$keyword}%")
++                    ->orWhere('author', 'like', "%{$keyword}%");
++            });
++        }
++
++        $genre = (int) $request->query('genre', 0);
++        if ($genre > 0) {
++            $query->whereHas('genres', function ($q) use ($genre) {
++                $q->where('genres.id', $genre);
++            });
++        }
++
++        $sort = (string) $request->query('sort', 'newest');
++        match ($sort) {
++            'oldest' => $query->orderBy('created_at'),
++            'title' => $query->orderBy('title'),
++            'rating' => $query->withAvg('reviews', 'rating')->orderByDesc('reviews_avg_rating'),
++            default => $query->orderByDesc('created_at'),
++        };
++
++        $books = $query->paginate(10)->withQueryString();
++
++        return view('books.index', [
++            'books' => $books,
++            'genres' => Genre::all(),
++        ]);
++    }
++--- index()内の validate/rules/FormRequest 出現 ---
++(該当なし)
++```
++
++### E-3 keyword検索が1クロージャでグループ化
++```
++        $keyword = trim((string) $request->query('keyword', ''));
++        if ($keyword !== '') {
++            $query->where(function ($q) use ($keyword) {
++                $q->where('title', 'like', "%{$keyword}%")
++                    ->orWhere('author', 'like', "%{$keyword}%");
++            });
++        }
++```
++
++### E-4 rating並びに COALESCE 等のNULL変換が無い
++```
++(coalesce/ifnull 出現なし)
++```
++
++### E-6 migration差分
++```
++# 07コミット単体(20ffde4) vs main の migrations 差分stat:
++(空=07コミットはmigration未変更)
++# ブランチ先端(HEAD) vs main の migrations 変更ファイル名(=08分):
++database/migrations/2026_09_11_111642_make_isbn_and_published_date_nullable_on_books_table.php
++```
++
++### E-7 resources差分（自コミット分）
++```
++# main..HEAD で自コミットが変更した resources:
++(空=コミットはresources未変更)
++# 参考: working tree の前提(advanced Blade移入)未コミット変更:
++ M resources/views/books/_form.blade.php
++ M resources/views/books/create.blade.php
++ M resources/views/books/edit.blade.php
++ M resources/views/books/index.blade.php
++ M resources/views/books/show.blade.php
++ M resources/views/favorites/index.blade.php
++```
++
++### E-8 QUESTIONS.md の走行⑦由来の記録
++```
++12:| 2026-09-11 | 07_検索フィルタソート（検品表B-2） | 検品表B-2は `/books?keyword=Code&genre=3` で「リーダブルコード」「Clean Code」の2冊を期待するが、走行⑤確定のシードデータでは「リーダブルコード」の title=「リーダブルコード」（カタカナ）・author=「Dustin Boswell」であり "Code" の文字列を含まない。発注書07§2はキーワード検索を title/author の LIKE 検索のみと明示しており、実装はこれに完全準拠。この仕様＋実データでは keyword=Code は「Clean Code」のみに一致し、genre=3 とのAND結果は1冊（Clean Code）になる。実装欠陥ではなく検品表の想定データとシードの不整合。 | (a) 発注書07§2（title/author LIKE）が正本であり実装は正しい。検品表B-2の期待値を「keyword=Clean&genre=3 → Clean Code の1冊」等、実シードで成立する例に修正する（今回採用: 実装は変更しない）。 (b) B-2のAND検証を別の組み合わせ（例: keyword=夏目 だけでAND無関係、genre併用は別ID）に差し替える。※検索対象カラムの拡張（説明文等）は§2の明示指定に反するため候補にしない。 |
++```
++
++---
++
++# 検品表08 — ISBN検索
++
++## A. ISBN検索・正常系
++
++注記: 収集時点で本物のGoogle Books APIは HTTP 429（レート制限）を返した（本節末尾に実API生出力を添付）。発注書§3/§4は採点を Http::fake 配下で行う設計のため、A系は Google Books の実レスポンス形状を模した Http::fake で searchByIsbn を実行した生出力を記載する。各 fake は状態持ち越しを避けるため個別プロセスで実行。
++
++### A-1 実在13桁ISBN入力でタイトル・著者・出版日・説明・画像が自動入力（単著フェイク）
++```
++status=200
++body={"title":"\u30ea\u30fc\u30c0\u30d6\u30eb\u30b3\u30fc\u30c9","author":"Dustin Boswell","description":"\u3088\u308a\u826f\u3044\u30b3\u30fc\u30c9\u3092\u66f8\u304f\u305f\u3081\u306e\u5b9f\u8df5\u30c6\u30af\u30cb\u30c3\u30af","image_url":"http:\/\/books.google.com\/books\/content?id=x&img=1","published_date":"2012-06-23"}
++```
++
++### A-2 レスポンスJSONが title/author/description/image_url/published_date の5キー
++```
++keys=["title","author","description","image_url","published_date"]
++```
++
++### A-3 著者複数の書籍で author が「、」区切りの1文字列
++```
++body={"title":"\u5171\u8457\u672c","author":"\u5c71\u7530\u592a\u90ce\u3001\u7530\u4e2d\u82b1\u5b50\u3001\u4f50\u85e4\u6b21\u90ce","description":"","image_url":"","published_date":"2020"}
++author=山田太郎、田中花子、佐藤次郎
++```
++
++### 参考: 収集時点の本物Google Books API 実通信の生出力
++```
++real API HTTP status=429 totalItems=(none)
++```
++
++## B. エラー系・実装方式
++
++### B-1 13桁でないISBN（123）で422 `{"error":"ISBNは13桁の数字で入力してください"}`
++```
++status=422
++body={"error":"ISBN\u306f13\u6841\u306e\u6570\u5b57\u3067\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044"}
++```
++
++### B-2 実在しない13桁ISBN（9999999999999）で404 `{"error":"該当する書籍が見つかりませんでした"}`
++```
++(注: 実APIは429のため totalItems=0 応答を fake して分岐確認)
++status=404
++body={"error":"\u8a72\u5f53\u3059\u308b\u66f8\u7c4d\u304c\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f"}
++```
++
++### B-3 通信エラー時502（ConnectionException捕捉 と $response->failed() の両分岐がソースに存在）
++```
++    public function searchByIsbn(string $isbn): JsonResponse
++    {
++        if (! preg_match('/^[0-9]{13}$/', $isbn)) {
++            return response()->json(['error' => 'ISBNは13桁の数字で入力してください'], 422);
++        }
++
++        try {
++            $response = Http::timeout(5)->get('https://www.googleapis.com/books/v1/volumes', [
++                'q' => "isbn:{$isbn}",
++            ]);
++        } catch (ConnectionException $e) {
++            return response()->json(['error' => '書籍情報の取得に失敗しました'], 502);
++        }
++
++        if ($response->failed()) {
++            return response()->json(['error' => '書籍情報の取得に失敗しました'], 502);
++        }
++
++        $totalItems = $response->json('totalItems', 0);
++        if ($totalItems === 0) {
++            return response()->json(['error' => '該当する書籍が見つかりませんでした'], 404);
++        }
++
++        $volumeInfo = $response->json('items.0.volumeInfo', []);
++
++        return response()->json([
++            'title' => $volumeInfo['title'] ?? '',
++            'author' => implode('、', $volumeInfo['authors'] ?? []),
++            'description' => $volumeInfo['description'] ?? '',
++            'image_url' => $volumeInfo['imageLinks']['thumbnail'] ?? '',
++            'published_date' => $volumeInfo['publishedDate'] ?? '',
++        ]);
++    }
++```
++(参考) fake で両分岐の実挙動:
++```
++ConnectionException分岐: status=502 body={"error":"\u66f8\u7c4d\u60c5\u5831\u306e\u53d6\u5f97\u306b\u5931\u6557\u3057\u307e\u3057\u305f"}
++failed()分岐(500応答): status=502 body={"error":"\u66f8\u7c4d\u60c5\u5831\u306e\u53d6\u5f97\u306b\u5931\u6557\u3057\u307e\u3057\u305f"}
++```
++
++### B-4 Http ファサード経由（curl_exec/file_get_contents/Guzzle直接インスタンス化が無い）
++```
++禁止手段の grep:
++(禁止手段の出現なし)
++Httpファサードの use:
++15:use Illuminate\Support\Facades\Http;
++```
++
++### B-5 未ログインで /books/isbn/{isbn} が /login へ302（401 JSONでない）
++```
++有効ISBN: HTTP 302 -> http://localhost:8022/login
++無効ISBN: HTTP 302 -> http://localhost:8022/login
++```
++
++### B-6 routes/web.php で books.searchByIsbn が books.show より前
++```
++4:  GET|HEAD        api/v1/books/{book} books.show › Api\V1\BookController@show
++5:  PUT|PATCH       api/v1/books/{book} books.update › Api\V1\BookController@up…
++6:  DELETE          api/v1/books/{book} books.destroy › Api\V1\BookController@d…
++10:  GET|HEAD        books/isbn/{isbn} books.searchByIsbn › BookController@searc…
++11:  GET|HEAD        books/{book} .............. books.show › BookController@show
++12:  PUT             books/{book} .......... books.update › BookController@update
++13:  DELETE          books/{book} ........ books.destroy › BookController@destroy
++```
++
++## C. booksテーブルのnullable化
++
++### C-1/C-2 ISBN・出版日を空欄のまま新規登録できる（StoreBookRequestルール＋Validator実行＋DB登録rollback）
++```
++isbn rule: ["nullable","string","regex:\/^[0-9]{13}$\/","unique:books,isbn"]
++published_date rule: ["nullable","date"]
++Validator空ISBN/空出版日 fails=false
++DB登録後: id=14 isbn=NULL published_date=NULL
++rollback後 books件数: 11
++```
++
++### C-3 ISBN・出版日を空欄のまま編集（更新）できる（既存書籍をnull化保存rollback）
++```
++Update isbn rule[0]=nullable published_date rule=["nullable","date"]
++更新前 id1 isbn=9784101010014 published_date=1905-01-01
++更新後 id1 isbn=NULL published_date=NULL
++rollback後 id1 isbn=9784101010014
++```
++
++### C-4 ISBN・出版日 未入力の書籍が詳細画面で「未登録」表示（null化した書籍を実機表示 rollbackせずcommit→確認→復元）
++```
++show.blade 該当箇所:
++62:                            <p class="text-gray-600 mb-2"><strong>ISBN:</strong> {{ $book->isbn ?? '未登録' }}</p>
++63:                            <p class="text-gray-600 mb-2"><strong>出版日:</strong> {{ $book->published_date?->format('Y-m-d') ?? '未登録' }}</p>
++実機: id=1 を一時的にnull化(commit)→/books/1 表示→元に戻す
++set null done
++詳細画面ISBN行: ISBN:</strong> 未登録
++詳細画面出版日行: 出版日:</strong> 未登録
++restored id1
++```
++
++### C-5 ISBN・出版日 未入力の書籍がお気に入り一覧で「未登録」表示
++```
++favorites/index.blade.php の未登録表示箇所（当画面はISBNを表示、出版日欄は無し）:
++30:                                        <span class="text-sm text-gray-500">ISBN: {{ $book->isbn ?? '未登録' }}</span>
++```
++
++### C-6 ISBNに値を入れた場合の13桁チェック（Validator）
++```
++isbn=123 errors: ["ISBNは13桁の数字で入力してください（入力がある場合のみ）"]
++```
++
++### C-7 ISBNに値を入れた場合の一意性チェック（既存ISBNと重複）
++```
++重複ISBN=9784048930598 errors: ["このISBNは既に登録されています"]
++```
++
++### C-8 出版日を持つ書籍の詳細がY-m-d表示（Carbonキャスト有効）
++```
++Bookモデル casts:
++28:    protected $casts = [
++29-        'published_date' => 'date',
++30-    ];
++31-
++実機 /books/1 出版日行: 出版日:</strong> 1905-01-01
++キャスト型: Illuminate\Support\Carbon -> 1905-01-01
++```
++
++### C-9 「ISBNを入力してください」「出版日を入力してください」の必須メッセージが出ない
++```
++Store messages に isbn.required 存在=false published_date.required 存在=false
++Store rules isbn に required 含む=false published_date に required 含む=false
++Update rules isbn に required 含む=false published_date に required 含む=false
++grep: 必須メッセージ文字列の残存確認
++app/Http/Requests/Api/V1/UpdateApiBookRequest.php:46:            'isbn.required' => 'ISBNを入力してください',
++app/Http/Requests/Api/V1/UpdateApiBookRequest.php:49:            'published_date.required' => '出版日を入力してください',
++app/Http/Requests/Api/V1/StoreApiBookRequest.php:39:            'isbn.required' => 'ISBNを入力してください',
++app/Http/Requests/Api/V1/StoreApiBookRequest.php:42:            'published_date.required' => '出版日を入力してください',
++```
++
++## D. コード品質・スコープ厳守
++
++### D-1 `sail bin pint --test`
++```
++  ──────────────────────────────────────────────────────────────────── Laravel  
++    PASS   ......................................................... 108 files  
++
++```
++
++### D-2 ISBN検索・nullable化以外の書籍CRUD（store/show/edit/update/destroy/restore・認可）の既存挙動に変化なし
++```
++# BookControllerの既存メソッド差分（main..HEAD, index/searchByIsbn以外の削除行があるか）:
++(既存メソッド本体の削除行なし=無変更)
++# FormRequest差分（isbn/published_date以外に変更があるか）:
++-                'required',
+++                'nullable',
++(上にtitle/author/genres/authorize等が出なければ=それらは無変更)
++# BookPolicy・他モデルの変更有無:
++(Policy・他モデル変更なし)
++```
++
++### D-4 migrationの変更が isbn・published_date のnullable化のみ
++```
++diff --git a/database/migrations/2026_09_11_111642_make_isbn_and_published_date_nullable_on_books_table.php b/database/migrations/2026_09_11_111642_make_isbn_and_published_date_nullable_on_books_table.php
++new file mode 100644
++index 0000000..ef6b3b9
++--- /dev/null
+++++ b/database/migrations/2026_09_11_111642_make_isbn_and_published_date_nullable_on_books_table.php
++@@ -0,0 +1,30 @@
+++<?php
+++
+++use Illuminate\Database\Migrations\Migration;
+++use Illuminate\Database\Schema\Blueprint;
+++use Illuminate\Support\Facades\Schema;
+++
+++return new class extends Migration
+++{
+++    /**
+++     * Run the migrations.
+++     */
+++    public function up(): void
+++    {
+++        Schema::table('books', function (Blueprint $table) {
+++            $table->string('isbn', 13)->nullable()->change();
+++            $table->date('published_date')->nullable()->change();
+++        });
+++    }
+++
+++    /**
+++     * Reverse the migrations.
+++     */
+++    public function down(): void
+++    {
+++        Schema::table('books', function (Blueprint $table) {
+++            $table->string('isbn', 13)->nullable(false)->change();
+++            $table->date('published_date')->nullable(false)->change();
+++        });
+++    }
+++};
++```
++
++### D-5 resources 未変更（自コミット分）
++```
++(空=コミットはresources未変更)
++(working tree 前提Blade)  M resources/views/books/_form.blade.php
++(working tree 前提Blade)  M resources/views/books/create.blade.php
++(working tree 前提Blade)  M resources/views/books/edit.blade.php
++(working tree 前提Blade)  M resources/views/books/index.blade.php
++(working tree 前提Blade)  M resources/views/books/show.blade.php
++(working tree 前提Blade)  M resources/views/favorites/index.blade.php
++```
++
++### D-6 QUESTIONS.md の走行⑧由来の記録
++```
++27:現在の未解消件数: **3件**（②B-2/③C-4のCSRF419【検証方法の記録として保持・修正パッチで確認方法変更済み】、05のpublished_date cast【走行⑧のadvanced Blade移入で show.blade が `published_date?->format('Y-m-d')` に変わったため発注書08§5に従いモデルへ cast を追加。当該行の裁定前提が変化した点を片倉に要確認】、07検品表B-2のシード不整合）
++```
++
++---
++以上。生出力のみを記載。判定はチャット側で行う。
+diff --git a/routes/web.php b/routes/web.php
+index 15aad16..a343d23 100644
+--- a/routes/web.php
++++ b/routes/web.php
+@@ -25,6 +25,7 @@
+ // 書籍（認証必須。/books/{book} より前に定義）
+ Route::middleware('auth')->group(function () {
+     Route::get('/books/create', [BookController::class, 'create'])->name('books.create');
++    Route::get('/books/isbn/{isbn}', [BookController::class, 'searchByIsbn'])->name('books.searchByIsbn');
+     Route::post('/books', [BookController::class, 'store'])->name('books.store');
+ });
+ 
