@@ -70,4 +70,16 @@ class ScreenAccessTest extends TestCase
         $this->delete(route('books.destroy', $book))->assertRedirect('/login');
         $this->patch(route('books.restore', $book))->assertRedirect('/login');
     }
+
+    /** 未ログインでログイン画面を開くと200でログイン画面が返る */
+    public function test_guest_can_open_login_page(): void
+    {
+        $this->get('/login')->assertOk()->assertViewIs('auth.login');
+    }
+
+    /** 未ログインで会員登録画面を開くと200で会員登録画面が返る */
+    public function test_guest_can_open_register_page(): void
+    {
+        $this->get('/register')->assertOk()->assertViewIs('auth.register');
+    }
 }
