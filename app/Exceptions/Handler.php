@@ -5,8 +5,8 @@ namespace App\Exceptions;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
 use Illuminate\Http\Request;
-use Illuminate\Session\TokenMismatchException;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Throwable;
 
@@ -60,8 +60,9 @@ class Handler extends ExceptionHandler
             }
         });
 
-        $this->renderable(function (TokenMismatchException $e, Request $request) {
-            if (! $request->is('api/*')) {
+        // トークン不一致は、フレームワークがこの処理より先にステータス419の HttpException へ変換するため、その形で受け取る
+        $this->renderable(function (HttpException $e, Request $request) {
+            if ($e->getStatusCode() === 419 && ! $request->is('api/*')) {
                 return response()->view('errors.419', [], 419);
             }
         });
