@@ -12,6 +12,11 @@ class Genre extends Model
 
     protected $fillable = ['name'];
 
+    /**
+     * ジャンルに紐づく書籍を取得する。
+     *
+     * @return BelongsToMany<Book>
+     */
     public function books(): BelongsToMany
     {
         return $this->belongsToMany(Book::class, 'book_genre');

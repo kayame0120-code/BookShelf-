@@ -30,11 +30,21 @@ class ReadingPlan extends Model
         'completed_at' => 'datetime',
     ];
 
+    /**
+     * 読書計画を立てた会員を取得する。
+     *
+     * @return BelongsTo<User, ReadingPlan>
+     */
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }
 
+    /**
+     * 読書計画の対象の書籍を、削除済みも含めて取得する。
+     *
+     * @return BelongsTo<Book, ReadingPlan>
+     */
     public function book(): BelongsTo
     {
         // 論理削除済みの書籍に紐づく読書計画も一覧・編集で表示するため（CLAUDE.md §9-1）
