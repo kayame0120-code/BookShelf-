@@ -9,6 +9,9 @@ use App\Models\ReadingPlan;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Notifications\Events\NotificationSending;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 
 /**
@@ -125,5 +128,29 @@ class ReadingPlanReminderTest extends TestCase
         $this->assertDatabaseHas('notifications', [
             'notifiable_id' => $user->id,
         ]);
+    }
+
+    /** 1件の通知送信が例外を投げても、その失敗をログに書き、残りの会員には通知が届く */
+    public function test_failure_of_one_notification_is_logged_and_others_are_notified(): void
+    {
+        $failingUser = User::factory()->create();
+        $failingPlan = $this->makePlan($failingUser, ReadingPlanStatus::InProgress, Carbon::today()->toDateString());
+        $otherUser = User::factory()->create();
+        $this->makePlan($otherUser, ReadingPlanStatus::InProgress, Carbon::today()->toDateString());
+
+        Event::listen(NotificationSending::class, function (NotificationSending $event) use ($failingUser): void {
+            if ($event->notifiable->id === $failingUser->id) {
+                throw new \RuntimeException('検品用の送信失敗');
+            }
+        });
+        Log::spy();
+
+        $this->artisan('reading-plans:send-reminders')->assertExitCode(0);
+
+        Log::shouldHaveReceived('error')
+            ->once()
+            ->withArgs(fn (string $message): bool => str_contains($message, "読書計画#{$failingPlan->id}の通知送信に失敗しました"));
+        $this->assertSame([], $this->timingsOf($failingUser));
+        $this->assertSame([NotificationTiming::OnDueDate->value], $this->timingsOf($otherUser));
     }
 }

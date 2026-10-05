@@ -8,6 +8,7 @@ use App\Models\ReadingPlan;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 
 /**
@@ -87,5 +88,27 @@ class ExpireReadingPlansTest extends TestCase
         $fresh = $plan->fresh();
         $this->assertSame(ReadingPlanStatus::Completed, $fresh->status);
         $this->assertSame($completedAt, $fresh->completed_at->toDateTimeString());
+    }
+
+    /** 1件の状態更新が例外を投げても、その失敗をログに書き、残りの計画は期限切れに変わる */
+    public function test_failure_of_one_plan_is_logged_and_others_are_expired(): void
+    {
+        $failing = $this->makePlan(ReadingPlanStatus::InProgress, Carbon::today()->subDays(3)->toDateString());
+        $other = $this->makePlan(ReadingPlanStatus::InProgress, Carbon::today()->subDays(3)->toDateString());
+
+        ReadingPlan::updating(function (ReadingPlan $plan) use ($failing): void {
+            if ($plan->id === $failing->id) {
+                throw new \RuntimeException('検品用の更新失敗');
+            }
+        });
+        Log::spy();
+
+        $this->artisan('reading-plans:expire')->assertExitCode(0);
+
+        Log::shouldHaveReceived('error')
+            ->once()
+            ->withArgs(fn (string $message): bool => str_contains($message, "読書計画#{$failing->id}の失効処理に失敗しました"));
+        $this->assertSame(ReadingPlanStatus::InProgress, $failing->fresh()->status);
+        $this->assertSame(ReadingPlanStatus::Expired, $other->fresh()->status);
     }
 }

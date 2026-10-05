@@ -46,26 +46,51 @@ class User extends Authenticatable
         'password' => 'hashed',
     ];
 
+    /**
+     * 会員が登録した書籍を取得する。
+     *
+     * @return HasMany<Book>
+     */
     public function books(): HasMany
     {
         return $this->hasMany(Book::class);
     }
 
+    /**
+     * 会員が投稿したレビューを取得する。
+     *
+     * @return HasMany<Review>
+     */
     public function reviews(): HasMany
     {
         return $this->hasMany(Review::class);
     }
 
+    /**
+     * 会員がお気に入りに登録した書籍を取得する。
+     *
+     * @return BelongsToMany<Book>
+     */
     public function favoriteBooks(): BelongsToMany
     {
         return $this->belongsToMany(Book::class, 'favorites');
     }
 
+    /**
+     * 会員がいいねしたレビューを取得する。
+     *
+     * @return BelongsToMany<Review>
+     */
     public function likedReviews(): BelongsToMany
     {
         return $this->belongsToMany(Review::class, 'review_likes');
     }
 
+    /**
+     * 会員の読書計画を取得する。
+     *
+     * @return HasMany<ReadingPlan>
+     */
     public function readingPlans(): HasMany
     {
         return $this->hasMany(ReadingPlan::class);

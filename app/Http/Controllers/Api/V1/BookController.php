@@ -67,7 +67,7 @@ class BookController extends Controller
             return $book;
         });
 
-        $book->load('genres')->loadAvg('reviews', 'rating')->loadCount('reviews');
+        $book->load(['genres', 'reviews.user'])->loadAvg('reviews', 'rating')->loadCount('reviews');
 
         return (new BookResource($book))->response()->setStatusCode(Response::HTTP_CREATED);
     }
@@ -84,7 +84,7 @@ class BookController extends Controller
             $book->genres()->sync($request->genres);
         });
 
-        $book->load('genres')->loadAvg('reviews', 'rating')->loadCount('reviews');
+        $book->load(['genres', 'reviews.user'])->loadAvg('reviews', 'rating')->loadCount('reviews');
 
         return new BookResource($book);
     }

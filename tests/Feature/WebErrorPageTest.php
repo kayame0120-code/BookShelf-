@@ -95,4 +95,16 @@ class WebErrorPageTest extends TestCase
             ->assertHeader('content-type', 'application/json')
             ->assertExactJson(['message' => 'この操作を実行する権限がありません。']);
     }
+
+    /** 画面側でトークン不一致が起きると、ステータス419で errors.419 の画面を返す */
+    public function test_web_token_mismatch_renders_errors_419_view(): void
+    {
+        Route::post('/__test_token_mismatch_view', function () {
+            throw new TokenMismatchException('CSRF token mismatch.');
+        });
+
+        $this->post('/__test_token_mismatch_view')
+            ->assertStatus(419)
+            ->assertViewIs('errors.419');
+    }
 }
