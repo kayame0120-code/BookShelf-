@@ -78,7 +78,7 @@ body() { echo "{\"title\":\"$1\",\"author\":\"API著者\",\"isbn\":\"$2\",\"publ
 | 行 | 条件 | 確認方法 | 期待値 |
 |---|---|---|---|
 | 07-07 | トークンが無いと 401 | `api POST /api/v1/books '' "$(body X 971$STAMP $GID)"` | `401` |
-| 07-08 | 401 の本文が `{"message": "認証が必要です。"}` | `cat /tmp/api.json` | `{"message":"認証が必要です。"}` |
+| 07-08 | 401 の本文が `{"message": "認証が必要です。"}` | `cat /tmp/api.json` | `{"message":"認証が必要です。"}`（JSON として読み込んだ値で照合する。日本語が `\uXXXX` で出力されても、読み込んだ値が同じなら一致） |
 | 07-09 | 無効なトークンでも 401 | `api POST /api/v1/books 'invalid-token' "$(body X 971$STAMP $GID)"` | `401` |
 | 07-10 | トークンと正しい入力で 201 | `api POST /api/v1/books $TA "$(body A$STAMP-1 978$STAMP $GID)"` | `201` |
 | 07-11 | 登録者がトークンの持ち主（検品会員A）である | `ID1=$(jget "['data']['id']"); tk "echo App\Models\Book::find($ID1)->user_id;"` | `$UA` の値 |
@@ -134,8 +134,8 @@ body() { echo "{\"title\":\"$1\",\"author\":\"API著者\",\"isbn\":\"$2\",\"publ
 | 07-51 | `average_rating` がレビュー平均を小数1桁に丸めた数 | `jget "['data']['average_rating']"; tk "echo round(DB::table('reviews')->where('book_id',$SEED)->avg('rating'), 1);"` | 2行の数が同じ |
 | 07-52 | `reviews_count` がレビュー件数 | `jget "['data']['reviews_count']"; tk "echo DB::table('reviews')->where('book_id',$SEED)->count();"` | 2行の数が同じ |
 | 07-53 | 存在しないIDは 404 | `api GET /api/v1/books/999999999` | `404` |
-| 07-54 | 404 の本文が `{"message": "指定された書籍が見つかりません。"}` | `cat /tmp/api.json` | `{"message":"指定された書籍が見つかりません。"}` |
-| 07-55 | `Accept` を付けずに呼んでも、存在しないIDは画面ではなく JSON で返る | `curl -s $BASE/api/v1/books/999999999` | `{"message":"指定された書籍が見つかりません。"}` |
+| 07-54 | 404 の本文が `{"message": "指定された書籍が見つかりません。"}` | `cat /tmp/api.json` | `{"message":"指定された書籍が見つかりません。"}`（JSON として読み込んだ値で照合する。日本語が `\uXXXX` で出力されても、読み込んだ値が同じなら一致） |
+| 07-55 | `Accept` を付けずに呼んでも、存在しないIDは画面ではなく JSON で返る | `curl -s $BASE/api/v1/books/999999999` | `{"message":"指定された書籍が見つかりません。"}`（JSON として読み込んだ値で照合する。日本語が `\uXXXX` で出力されても、読み込んだ値が同じなら一致） |
 
 ## 5. AP04 書籍更新 `PUT /api/v1/books/{book}`
 
@@ -143,7 +143,7 @@ body() { echo "{\"title\":\"$1\",\"author\":\"API著者\",\"isbn\":\"$2\",\"publ
 |---|---|---|---|
 | 07-56 | トークンが無いと 401 | `api PUT /api/v1/books/$ID1 '' "$(body A$STAMP-1 978$STAMP $GID)"` | `401` |
 | 07-57 | 登録者以外（検品会員B）のトークンでは 403 | `api PUT /api/v1/books/$ID1 $TB "$(body A$STAMP-1 978$STAMP $GID)"` | `403` |
-| 07-58 | 403 の本文が `{"message": "この操作を実行する権限がありません。"}` | `cat /tmp/api.json` | `{"message":"この操作を実行する権限がありません。"}` |
+| 07-58 | 403 の本文が `{"message": "この操作を実行する権限がありません。"}` | `cat /tmp/api.json` | `{"message":"この操作を実行する権限がありません。"}`（JSON として読み込んだ値で照合する。日本語が `\uXXXX` で出力されても、読み込んだ値が同じなら一致） |
 | 07-59 | 登録者本人のトークンで、自分の ISBN のまま更新でき 200 | `api PUT /api/v1/books/$ID1 $TA "$(body A$STAMP-1u 978$STAMP $GID)"` | `200` |
 | 07-60 | 更新後の書籍が返る | `jget "['data']['title']"` | `"A$STAMP-1u"` |
 | 07-61 | 他の書籍の ISBN へ更新しようとすると 422 | `api PUT /api/v1/books/$ID1 $TA "$(body A$STAMP-1u 979$STAMP $GID)"` | `422` |
